@@ -1,0 +1,8 @@
+TITLE: EDL_01_COMMENT_REEL_COLON
+FCM: NON-DROP FRAME
+
+001  AX       V     C        12:00:00:00 12:00:03:23 01:00:00:00 01:00:03:23
+* REEL: A101
+* FROM CLIP NAME: A101_C001_0001.mov
+* SOURCE FILE: /Users/lex./Desktop/XcodeProjects/OCRTimecode/work/edl_reel_comment_tests/media/A101_C001_0001.mov
+

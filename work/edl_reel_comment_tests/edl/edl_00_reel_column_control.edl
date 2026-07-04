@@ -1,0 +1,11 @@
+TITLE: EDL_00_REEL_COLUMN_CONTROL
+FCM: NON-DROP FRAME
+
+001  A101     V     C        12:00:00:00 12:00:03:23 01:00:00:00 01:00:03:23
+* FROM CLIP NAME: A101_C001_0001.mov
+* SOURCE FILE: /Users/lex./Desktop/XcodeProjects/OCRTimecode/work/edl_reel_comment_tests/media/A101_C001_0001.mov
+
+002  B202     V     C        12:00:00:00 12:00:03:23 01:00:05:00 01:00:08:23
+* FROM CLIP NAME: B202_C001_0001.mov
+* SOURCE FILE: /Users/lex./Desktop/XcodeProjects/OCRTimecode/work/edl_reel_comment_tests/media/B202_C001_0001.mov
+

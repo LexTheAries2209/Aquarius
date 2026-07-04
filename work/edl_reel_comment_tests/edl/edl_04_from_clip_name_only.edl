@@ -1,0 +1,7 @@
+TITLE: EDL_04_FROM_CLIP_NAME_ONLY
+FCM: NON-DROP FRAME
+
+001  AX       V     C        12:00:00:00 12:00:03:23 01:00:00:00 01:00:03:23
+* FROM CLIP NAME: D404_C001_0001.mov
+* SOURCE FILE: /Users/lex./Desktop/XcodeProjects/OCRTimecode/work/edl_reel_comment_tests/media/D404_C001_0001.mov
+
