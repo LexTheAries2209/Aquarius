@@ -79,6 +79,14 @@ struct ContentView: View {
                 Label("导出 CSV", systemImage: "tablecells")
             }
             .disabled(!viewModel.canExportDaVinciMetadata || viewModel.isAnalyzing)
+
+            Button {
+                viewModel.confirmAndBurnTimecodeIntoTMCD()
+            } label: {
+                Label(viewModel.isBurningTimecode ? "烧录中" : "烧录时间码", systemImage: "timer")
+            }
+            .disabled(!viewModel.canBurnTimecodeIntoTMCD)
+            .help("将列表中每个素材的有效起始时间码写入源文件 TMCD 轨道")
         }
         .buttonStyle(.bordered)
         .padding(.horizontal, 18)

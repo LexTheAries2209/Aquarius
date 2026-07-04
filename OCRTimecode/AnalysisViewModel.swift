@@ -5,6 +5,30 @@ import Foundation
 import SwiftUI
 import UniformTypeIdentifiers
 
+private struct TimecodeBurnJob: Sendable {
+    let id: MediaQueueItem.ID
+    let url: URL
+    let timecode: Timecode
+
+    nonisolated init(id: MediaQueueItem.ID, url: URL, timecode: Timecode) {
+        self.id = id
+        self.url = url
+        self.timecode = timecode
+    }
+}
+
+private final class ModalButtonTarget: NSObject {
+    let response: NSApplication.ModalResponse
+
+    init(response: NSApplication.ModalResponse) {
+        self.response = response
+    }
+
+    @objc func stopModal() {
+        NSApp.stopModal(withCode: response)
+    }
+}
+
 @MainActor
 final class AnalysisViewModel: ObservableObject {
     @Published var mediaItems: [MediaQueueItem] = []
@@ -16,6 +40,7 @@ final class AnalysisViewModel: ObservableObject {
     @Published var playbackDuration = 0.0
     @Published var analyzingItemID: MediaQueueItem.ID?
     @Published var isBatchAnalyzing = false
+    @Published var isBurningTimecode = false
     @Published var batchProgressMessage: String?
     @Published var statusMessage = "导入视频或文件夹后开始 OCR"
     @Published var errorMessage: String?
@@ -122,7 +147,7 @@ final class AnalysisViewModel: ObservableObject {
     }
 
     var isAnalyzing: Bool {
-        analyzingItemID != nil || isBatchAnalyzing
+        analyzingItemID != nil || isBatchAnalyzing || isBurningTimecode
     }
 
     var hasEnabledFields: Bool {
@@ -169,6 +194,12 @@ final class AnalysisViewModel: ObservableObject {
 
     var canExportDaVinciMetadata: Bool {
         exportableItemCount > 0
+    }
+
+    var canBurnTimecodeIntoTMCD: Bool {
+        !mediaItems.isEmpty
+            && !isAnalyzing
+            && timecodeBurnJobs.count == mediaItems.count
     }
 
     var updatedMetadataFields: [MetadataField] {
@@ -806,6 +837,135 @@ final class AnalysisViewModel: ObservableObject {
         }
     }
 
+    func confirmAndBurnTimecodeIntoTMCD() {
+        guard !isAnalyzing else {
+            errorMessage = "当前有任务正在进行，请完成后再烧录时间码"
+            return
+        }
+        guard !mediaItems.isEmpty else {
+            errorMessage = "请先导入视频"
+            return
+        }
+
+        let jobs = timecodeBurnJobs
+        guard jobs.count == mediaItems.count else {
+            let missingCount = max(0, mediaItems.count - jobs.count)
+            errorMessage = "还有 \(missingCount) 个素材没有有效起始时间码，请先提取或手动输入"
+            statusMessage = "无法烧录：列表时间码不完整"
+            return
+        }
+
+        guard runBurnTimecodeConfirmationPanel(fileCount: jobs.count) else {
+            return
+        }
+
+        Task {
+            await burnTimecodeIntoTMCD(jobs: jobs)
+        }
+    }
+
+    private func runBurnTimecodeConfirmationPanel(fileCount: Int) -> Bool {
+        let panelSize = NSSize(width: 280, height: 280)
+        let panel = NSPanel(
+            contentRect: NSRect(origin: .zero, size: panelSize),
+            styleMask: [.titled, .utilityWindow],
+            backing: .buffered,
+            defer: false
+        )
+        panel.title = "烧录时间码"
+        panel.isReleasedWhenClosed = false
+        panel.level = .modalPanel
+        panel.contentMinSize = panelSize
+        panel.contentMaxSize = panelSize
+
+        let contentView = NSView(frame: NSRect(origin: .zero, size: panelSize))
+        panel.contentView = contentView
+        panel.setContentSize(panelSize)
+
+        let iconView = NSImageView(image: NSApp.applicationIconImage)
+        iconView.imageScaling = .scaleProportionallyUpOrDown
+        iconView.translatesAutoresizingMaskIntoConstraints = false
+
+        let titleLabel = NSTextField(labelWithString: "确认烧录时间码？")
+        titleLabel.font = .systemFont(ofSize: 16, weight: .semibold)
+        titleLabel.alignment = .center
+        titleLabel.lineBreakMode = .byWordWrapping
+        titleLabel.maximumNumberOfLines = 1
+        titleLabel.translatesAutoresizingMaskIntoConstraints = false
+
+        let messageLabel = NSTextField(wrappingLabelWithString: """
+        会修改当前列表 \(fileCount) 个源文件的 QuickTime TMCD 轨道，Resolve 等软件读取到的源时间码会改变。
+
+        建议先备份原始文件。不会重编码画面；仅支持已有 TMCD 轨道的 MOV/QuickTime 文件，帧率不一致时请复核。
+        """)
+        messageLabel.font = .systemFont(ofSize: 13)
+        messageLabel.alignment = .left
+        messageLabel.lineBreakMode = .byWordWrapping
+        messageLabel.maximumNumberOfLines = 0
+        messageLabel.preferredMaxLayoutWidth = panelSize.width - 28
+        messageLabel.textColor = .labelColor
+        messageLabel.translatesAutoresizingMaskIntoConstraints = false
+        messageLabel.setContentCompressionResistancePriority(.required, for: .vertical)
+
+        let cancelButton = NSButton(title: "取消", target: nil, action: nil)
+        cancelButton.bezelStyle = .rounded
+        cancelButton.keyEquivalent = "\u{1b}"
+        cancelButton.translatesAutoresizingMaskIntoConstraints = false
+
+        let confirmButton = NSButton(title: "确认烧录", target: nil, action: nil)
+        confirmButton.bezelStyle = .rounded
+        confirmButton.keyEquivalent = "\r"
+        confirmButton.translatesAutoresizingMaskIntoConstraints = false
+
+        contentView.addSubview(iconView)
+        contentView.addSubview(titleLabel)
+        contentView.addSubview(messageLabel)
+        contentView.addSubview(cancelButton)
+        contentView.addSubview(confirmButton)
+
+        NSLayoutConstraint.activate([
+            iconView.topAnchor.constraint(equalTo: contentView.topAnchor, constant: 10),
+            iconView.centerXAnchor.constraint(equalTo: contentView.centerXAnchor),
+            iconView.widthAnchor.constraint(equalToConstant: 52),
+            iconView.heightAnchor.constraint(equalToConstant: 52),
+
+            titleLabel.topAnchor.constraint(equalTo: iconView.bottomAnchor, constant: 10),
+            titleLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 14),
+            titleLabel.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -14),
+
+            messageLabel.topAnchor.constraint(equalTo: titleLabel.bottomAnchor, constant: 12),
+            messageLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 14),
+            messageLabel.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -14),
+            messageLabel.bottomAnchor.constraint(lessThanOrEqualTo: cancelButton.topAnchor, constant: -9),
+
+            confirmButton.leadingAnchor.constraint(equalTo: contentView.centerXAnchor, constant: 6),
+            confirmButton.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -10),
+            confirmButton.widthAnchor.constraint(equalToConstant: 96),
+            confirmButton.heightAnchor.constraint(equalToConstant: 32),
+
+            cancelButton.trailingAnchor.constraint(equalTo: contentView.centerXAnchor, constant: -6),
+            cancelButton.bottomAnchor.constraint(equalTo: confirmButton.bottomAnchor),
+            cancelButton.widthAnchor.constraint(equalToConstant: 96),
+            cancelButton.heightAnchor.constraint(equalToConstant: 32)
+        ])
+
+        let cancelTarget = ModalButtonTarget(response: .cancel)
+        let confirmTarget = ModalButtonTarget(response: .OK)
+        cancelButton.action = #selector(ModalButtonTarget.stopModal)
+        cancelButton.target = cancelTarget
+        confirmButton.action = #selector(ModalButtonTarget.stopModal)
+        confirmButton.target = confirmTarget
+
+        panel.defaultButtonCell = confirmButton.cell as? NSButtonCell
+        panel.center()
+
+        let response = NSApp.runModal(for: panel)
+        panel.orderOut(nil)
+        _ = cancelTarget
+        _ = confirmTarget
+        return response == .OK
+    }
+
     func applyROIPreset(_ id: ROIPreset.ID) {
         guard let preset = roiPresets.first(where: { $0.id == id }) else {
             return
@@ -972,9 +1132,89 @@ final class AnalysisViewModel: ObservableObject {
         }
     }
 
+    private var timecodeBurnJobs: [TimecodeBurnJob] {
+        mediaItems.compactMap { item in
+            guard let startTimecode = exportMetadata(for: item).startTimecode else {
+                return nil
+            }
+            return TimecodeBurnJob(id: item.id, url: item.url, timecode: startTimecode)
+        }
+    }
+
     private var currentFrameOffset: Int {
         let fps = selectedMediaItem.map(timecodeFrameRateForManualEntry) ?? 24
         return max(0, Int(floor(currentPlaybackSeconds * Double(fps))))
+    }
+
+    private func burnTimecodeIntoTMCD(jobs: [TimecodeBurnJob]) async {
+        guard !jobs.isEmpty else {
+            return
+        }
+
+        pausePlayback()
+        isBurningTimecode = true
+        errorMessage = nil
+        batchProgressMessage = "准备烧录时间码..."
+        defer {
+            isBurningTimecode = false
+            analyzingItemID = nil
+        }
+
+        var successCount = 0
+        var failures: [(fileName: String, message: String)] = []
+
+        for (offset, job) in jobs.enumerated() {
+            guard mediaItems.contains(where: { $0.id == job.id }) else {
+                continue
+            }
+
+            analyzingItemID = job.id
+            batchProgressMessage = "正在烧录 \(offset + 1) / \(jobs.count)"
+            statusMessage = "正在烧录 \(job.url.lastPathComponent)：\(job.timecode.description)"
+
+            let scopedAccess = job.url.startAccessingSecurityScopedResource()
+            defer {
+                if scopedAccess {
+                    job.url.stopAccessingSecurityScopedResource()
+                }
+            }
+
+            do {
+                let report = try await Task.detached(priority: .userInitiated) {
+                    try QuickTimeTMCDWriter.writeStartTimecode(job.timecode, to: job.url)
+                }.value
+
+                successCount += 1
+                updateMediaItem(job.id) { item in
+                    item.sourceTimecodeMetadata = QuickTimeTimecodeMetadata(
+                        firstFrame: report.newFirstFrame,
+                        lastFrame: report.newLastFrame,
+                        frameRate: Double(report.newFrameRate),
+                        frameQuanta: report.newFrameRate,
+                        format: "tmcd"
+                    )
+                    item.sourceMetadataStatus = "TMCD 已写入：\(report.newFirstFrame)"
+                }
+            } catch {
+                failures.append((job.url.lastPathComponent, error.localizedDescription))
+            }
+        }
+
+        analyzingItemID = nil
+        let failedCount = failures.count
+        batchProgressMessage = "TMCD 烧录完成：成功 \(successCount) 个，失败 \(failedCount) 个"
+
+        if failures.isEmpty {
+            errorMessage = nil
+            statusMessage = "已将时间码烧录进 \(successCount) 个文件的 TMCD 轨道"
+        } else {
+            let failureText = failures
+                .prefix(4)
+                .map { "\($0.fileName)：\($0.message)" }
+                .joined(separator: "\n")
+            errorMessage = "烧录失败 \(failedCount) 个：\n\(failureText)"
+            statusMessage = "TMCD 烧录完成：成功 \(successCount) 个，失败 \(failedCount) 个"
+        }
     }
 
     private func exportMetadata(for item: MediaQueueItem) -> ClipExportMetadata {
