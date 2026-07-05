@@ -5,8 +5,14 @@ import Foundation
 @main
 struct RunTMCDCopySmoke {
     static func main() async throws {
-        let sourceURL = URL(fileURLWithPath: "/Users/lex./Desktop/XcodeProjects/OCRTimecode/OCRTimecode/Samples/qtake_A001_bottom_left_24fps.mov")
-        let outputDirectory = URL(fileURLWithPath: "/Users/lex./Desktop/XcodeProjects/OCRTimecode/work/tmcd_copy_smoke_outputs", isDirectory: true)
+        let projectRoot = URL(fileURLWithPath: FileManager.default.currentDirectoryPath, isDirectory: true)
+        let sourceURL = projectRoot
+            .appendingPathComponent("Aquarius", isDirectory: true)
+            .appendingPathComponent("Samples", isDirectory: true)
+            .appendingPathComponent("qtake_A001_bottom_left_24fps.mov")
+        let outputDirectory = projectRoot
+            .appendingPathComponent("work", isDirectory: true)
+            .appendingPathComponent("tmcd_copy_smoke_outputs", isDirectory: true)
         try FileManager.default.createDirectory(at: outputDirectory, withIntermediateDirectories: true)
 
         let outputURL = outputDirectory.appendingPathComponent("qtake_A001_copy_added_tmcd.mov")

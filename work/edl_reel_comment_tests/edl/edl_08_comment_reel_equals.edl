@@ -4,5 +4,5 @@ FCM: NON-DROP FRAME
 001  AX       V     C        12:00:00:00 12:00:03:23 01:00:00:00 01:00:03:23
 * COMMENT: REEL=G707
 * FROM CLIP NAME: G707_C001_0001.mov
-* SOURCE FILE: /Users/lex./Desktop/XcodeProjects/OCRTimecode/work/edl_reel_comment_tests/media/G707_C001_0001.mov
+* SOURCE FILE: media/G707_C001_0001.mov
 

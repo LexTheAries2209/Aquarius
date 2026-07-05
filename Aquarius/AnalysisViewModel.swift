@@ -107,6 +107,7 @@ final class AnalysisViewModel: ObservableObject {
     private var isLoadingProjectOutputSettings = false
 
     init() {
+        migrateLegacyApplicationSupportIfNeeded()
         loadProjectOutputSettings()
         loadROIPresets()
     }
@@ -899,7 +900,7 @@ final class AnalysisViewModel: ObservableObject {
         savePanel.allowedContentTypes = [.commaSeparatedText]
         savePanel.canCreateDirectories = true
         savePanel.isExtensionHidden = false
-        savePanel.nameFieldStringValue = "OCRTimecode_DaVinci_Metadata.csv"
+        savePanel.nameFieldStringValue = "Aquarius_DaVinci_Metadata.csv"
 
         guard savePanel.runModal() == .OK, let destination = savePanel.url else {
             return
@@ -1602,7 +1603,7 @@ final class AnalysisViewModel: ObservableObject {
             var usedFileNames = Set(successfulJobs.map { $0.destinationURL.lastPathComponent.lowercased() })
             let csvURL = uniqueDestinationURL(
                 in: destinationFolder,
-                stem: "OCRTimecode_DaVinci_Metadata_for_Renamed_Files",
+                stem: "Aquarius_DaVinci_Metadata_for_Renamed_Files",
                 fileExtension: "csv",
                 usedFileNames: &usedFileNames
             )
@@ -2311,17 +2312,39 @@ final class AnalysisViewModel: ObservableObject {
         return "\(baseName) \(index)"
     }
 
+    private static let applicationSupportFolderName = "Aquarius"
+    private static let legacyApplicationSupportFolderName = "OCR" + "Timecode"
+
+    private func migrateLegacyApplicationSupportIfNeeded() {
+        guard let applicationSupportURL = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first else {
+            return
+        }
+
+        let storeURL = applicationSupportURL.appendingPathComponent(Self.applicationSupportFolderName, isDirectory: true)
+        let legacyStoreURL = applicationSupportURL.appendingPathComponent(Self.legacyApplicationSupportFolderName, isDirectory: true)
+        guard FileManager.default.fileExists(atPath: legacyStoreURL.path),
+              !FileManager.default.fileExists(atPath: storeURL.path) else {
+            return
+        }
+
+        do {
+            try FileManager.default.copyItem(at: legacyStoreURL, to: storeURL)
+        } catch {
+            errorMessage = "迁移旧版本设置失败：\(error.localizedDescription)"
+        }
+    }
+
     private var roiPresetStoreURL: URL? {
         FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)
             .first?
-            .appendingPathComponent("OCRTimecode", isDirectory: true)
+            .appendingPathComponent(Self.applicationSupportFolderName, isDirectory: true)
             .appendingPathComponent("ROIPresets.json")
     }
 
     private var projectOutputSettingsStoreURL: URL? {
         FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)
             .first?
-            .appendingPathComponent("OCRTimecode", isDirectory: true)
+            .appendingPathComponent(Self.applicationSupportFolderName, isDirectory: true)
             .appendingPathComponent("ProjectOutputSettings.json")
     }
 

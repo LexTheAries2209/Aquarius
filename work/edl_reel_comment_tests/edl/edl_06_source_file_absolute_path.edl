@@ -2,6 +2,6 @@ TITLE: EDL_06_SOURCE_FILE_ABSOLUTE_PATH
 FCM: NON-DROP FRAME
 
 001  AX       V     C        12:00:00:00 12:00:03:23 01:00:00:00 01:00:03:23
-* SOURCE FILE: /Users/lex./Desktop/XcodeProjects/OCRTimecode/work/edl_reel_comment_tests/media/F606_C001_0001.mov
+* SOURCE FILE: media/F606_C001_0001.mov
 * FROM CLIP NAME: F606_C001_0001.mov
 

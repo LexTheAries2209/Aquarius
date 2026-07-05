@@ -10,7 +10,10 @@ private struct SmokeCase {
 @main
 struct RunAsyncAnalyzerSmoke {
     static func main() async throws {
-        let samplesDirectory = URL(fileURLWithPath: "/Users/lex./Desktop/XcodeProjects/OCRTimecode/OCRTimecode/Samples", isDirectory: true)
+        let projectRoot = URL(fileURLWithPath: FileManager.default.currentDirectoryPath, isDirectory: true)
+        let samplesDirectory = projectRoot
+            .appendingPathComponent("Aquarius", isDirectory: true)
+            .appendingPathComponent("Samples", isDirectory: true)
         let cases = [
             SmokeCase(
                 fileName: "qtake_A001_bottom_left_24fps.mov",

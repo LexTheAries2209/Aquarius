@@ -4,27 +4,27 @@ FCM: NON-DROP FRAME
 001  AX       V     C        12:00:00:00 12:00:03:23 01:00:00:00 01:00:03:23
 * REEL: A101
 * FROM CLIP NAME: A101_C001_0001.mov
-* SOURCE FILE: /Users/lex./Desktop/XcodeProjects/OCRTimecode/work/edl_reel_comment_tests/media/A101_C001_0001.mov
+* SOURCE FILE: media/A101_C001_0001.mov
 
 002  AX       V     C        12:00:00:00 12:00:03:23 01:00:05:00 01:00:08:23
 * REEL NAME: B202
 * FROM CLIP NAME: B202_C001_0001.mov
-* SOURCE FILE: /Users/lex./Desktop/XcodeProjects/OCRTimecode/work/edl_reel_comment_tests/media/B202_C001_0001.mov
+* SOURCE FILE: media/B202_C001_0001.mov
 
 003  AX       V     C        12:00:00:00 12:00:03:23 01:00:10:00 01:00:13:23
 * TAPE: C303
 * FROM CLIP NAME: C303_C001_0001.mov
-* SOURCE FILE: /Users/lex./Desktop/XcodeProjects/OCRTimecode/work/edl_reel_comment_tests/media/C303_C001_0001.mov
+* SOURCE FILE: media/C303_C001_0001.mov
 
 004  AX       V     C        12:00:00:00 12:00:03:23 01:00:15:00 01:00:18:23
 * FROM CLIP NAME: D404_C001_0001.mov
-* SOURCE FILE: /Users/lex./Desktop/XcodeProjects/OCRTimecode/work/edl_reel_comment_tests/media/D404_C001_0001.mov
+* SOURCE FILE: media/D404_C001_0001.mov
 
 005  AX       V     C        12:00:00:00 12:00:03:23 01:00:20:00 01:00:23:23
 * SOURCE FILE: E505_C001_0001.mov
 * FROM CLIP NAME: E505_C001_0001.mov
 
 006  AX       V     C        12:00:00:00 12:00:03:23 01:00:25:00 01:00:28:23
-* SOURCE FILE: /Users/lex./Desktop/XcodeProjects/OCRTimecode/work/edl_reel_comment_tests/media/F606_C001_0001.mov
+* SOURCE FILE: media/F606_C001_0001.mov
 * FROM CLIP NAME: F606_C001_0001.mov
 

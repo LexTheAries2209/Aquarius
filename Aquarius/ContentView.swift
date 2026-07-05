@@ -52,7 +52,7 @@ struct ContentView: View {
     private var topBar: some View {
         HStack(spacing: 12) {
             VStack(alignment: .leading, spacing: 3) {
-                Text("OCRTimecode")
+                Text("Aquarius")
                     .font(.title2.weight(.semibold))
                 Text(viewModel.statusMessage)
                     .font(.callout)
