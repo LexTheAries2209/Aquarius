@@ -916,18 +916,7 @@ struct ContentView: View {
     }
 
     private var sampleLog: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                Text("OCR 样本")
-                    .font(.headline)
-                Spacer()
-                if let count = viewModel.result?.samples.count {
-                    Text("\(count) 个样本")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-            }
-
+        ZStack(alignment: .topLeading) {
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 6) {
                     if let samples = viewModel.result?.samples, !samples.isEmpty {
@@ -962,7 +951,21 @@ struct ContentView: View {
                             .foregroundStyle(.secondary)
                     }
                 }
+                .padding(.top, 28)
             }
+            .padding(.trailing, 44)
+
+            HStack {
+                Text("OCR 样本")
+                    .font(.headline)
+                Spacer()
+                if let count = viewModel.result?.samples.count {
+                    Text("\(count) 个样本")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .allowsHitTesting(false)
         }
         .padding(.horizontal, 18)
         .padding(.vertical, 10)
