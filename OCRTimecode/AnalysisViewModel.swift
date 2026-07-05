@@ -17,6 +17,25 @@ private struct TimecodeBurnJob: Sendable {
     }
 }
 
+private struct FileOutputJob: Sendable {
+    let id: MediaQueueItem.ID
+    let sourceURL: URL
+    let destinationURL: URL
+    let timecode: Timecode?
+
+    nonisolated init(
+        id: MediaQueueItem.ID,
+        sourceURL: URL,
+        destinationURL: URL,
+        timecode: Timecode? = nil
+    ) {
+        self.id = id
+        self.sourceURL = sourceURL
+        self.destinationURL = destinationURL
+        self.timecode = timecode
+    }
+}
+
 private final class ModalButtonTarget: NSObject {
     let response: NSApplication.ModalResponse
 
@@ -53,6 +72,21 @@ final class AnalysisViewModel: ObservableObject {
     @Published var listCameraIDOverrideDraft = ""
     @Published var roiPresets: [ROIPreset] = []
     @Published var selectedROIPresetID: ROIPreset.ID?
+    @Published var isTimecodeBurnOptionEnabled = false {
+        didSet { persistProjectOutputSettings() }
+    }
+    @Published var timecodeBurnOutputMode: TimecodeBurnOutputMode = .sourceFile {
+        didSet { persistProjectOutputSettings() }
+    }
+    @Published var isFileRenameOptionEnabled = false {
+        didSet { persistProjectOutputSettings() }
+    }
+    @Published var renameOutputPrefix = "" {
+        didSet { persistProjectOutputSettings() }
+    }
+    @Published var renameOutputSuffix = "" {
+        didSet { persistProjectOutputSettings() }
+    }
 
     private var securityScopedURL: URL?
     private var isUsingSecurityScopedAccess = false
@@ -62,6 +96,7 @@ final class AnalysisViewModel: ObservableObject {
     private var sourceMetadataTasks: [MediaQueueItem.ID: Task<Void, Never>] = [:]
 
     init() {
+        loadProjectOutputSettings()
         loadROIPresets()
     }
 
@@ -198,10 +233,41 @@ final class AnalysisViewModel: ObservableObject {
         exportableItemCount > 0
     }
 
+    var shouldShowTimecodeBurnButton: Bool {
+        isTimecodeBurnOptionEnabled
+    }
+
+    var shouldShowFileRenameButton: Bool {
+        isFileRenameOptionEnabled
+    }
+
+    var shouldShowBurnAndRenameButton: Bool {
+        isTimecodeBurnOptionEnabled && isFileRenameOptionEnabled
+    }
+
     var canBurnTimecodeIntoTMCD: Bool {
         !mediaItems.isEmpty
             && !isAnalyzing
             && timecodeBurnJobs.count == mediaItems.count
+    }
+
+    var canCopyFilesWithMetadataNames: Bool {
+        !mediaItems.isEmpty
+            && !isAnalyzing
+            && mediaItems.allSatisfy { exportMetadata(for: $0).clipName != nil }
+    }
+
+    var canBurnAndRenameFiles: Bool {
+        canBurnTimecodeIntoTMCD && canCopyFilesWithMetadataNames
+    }
+
+    var timecodeBurnButtonHelp: String {
+        switch timecodeBurnOutputMode {
+        case .sourceFile:
+            "将有效起始时间码写入源文件已有 TMCD 轨道"
+        case .copyToFolder:
+            "复制到新文件夹后写入 TMCD；源文件不变"
+        }
     }
 
     var updatedMetadataFields: [MetadataField] {
@@ -839,6 +905,66 @@ final class AnalysisViewModel: ObservableObject {
         }
     }
 
+    func runTimecodeBurnAction() {
+        switch timecodeBurnOutputMode {
+        case .sourceFile:
+            confirmAndBurnTimecodeIntoTMCD()
+        case .copyToFolder:
+            copyAndBurnTimecodeIntoNewFolder()
+        }
+    }
+
+    func copyFilesWithMetadataNames() {
+        guard !isAnalyzing else {
+            errorMessage = "当前有任务正在进行，请完成后再复制改名"
+            return
+        }
+        guard !mediaItems.isEmpty else {
+            errorMessage = "请先导入视频"
+            return
+        }
+        guard canCopyFilesWithMetadataNames else {
+            let missingCount = mediaItems.filter { exportMetadata(for: $0).clipName == nil }.count
+            errorMessage = "还有 \(missingCount) 个素材没有有效文件名，请先提取或手动输入"
+            statusMessage = "无法改名：列表文件名不完整"
+            return
+        }
+        guard let folderURL = promptForOutputFolder(title: "选择改名输出文件夹", prompt: "复制并改名") else {
+            return
+        }
+
+        let jobs = makeFileOutputJobs(destinationFolder: folderURL, requiresClipName: true, requiresTimecode: false, forceMOVExtension: false)
+        Task {
+            await copyFiles(jobs: jobs, destinationFolder: folderURL, operationTitle: "复制改名")
+        }
+    }
+
+    func burnTimecodeAndRenameIntoNewFolder() {
+        guard !isAnalyzing else {
+            errorMessage = "当前有任务正在进行，请完成后再烧录并改名"
+            return
+        }
+        guard !mediaItems.isEmpty else {
+            errorMessage = "请先导入视频"
+            return
+        }
+        guard canBurnAndRenameFiles else {
+            let missingTimecodeCount = mediaItems.filter { exportMetadata(for: $0).startTimecode == nil }.count
+            let missingNameCount = mediaItems.filter { exportMetadata(for: $0).clipName == nil }.count
+            errorMessage = "列表元数据不完整：\(missingTimecodeCount) 个缺少时间码，\(missingNameCount) 个缺少文件名"
+            statusMessage = "无法烧录并改名：列表元数据不完整"
+            return
+        }
+        guard let folderURL = promptForOutputFolder(title: "选择烧录并改名输出文件夹", prompt: "烧录并改名") else {
+            return
+        }
+
+        let jobs = makeFileOutputJobs(destinationFolder: folderURL, requiresClipName: true, requiresTimecode: true, forceMOVExtension: true)
+        Task {
+            await copyAndBurnTimecode(jobs: jobs, destinationFolder: folderURL, renameOutputs: true)
+        }
+    }
+
     func confirmAndBurnTimecodeIntoTMCD() {
         guard !isAnalyzing else {
             errorMessage = "当前有任务正在进行，请完成后再烧录时间码"
@@ -857,12 +983,50 @@ final class AnalysisViewModel: ObservableObject {
             return
         }
 
+        let missingTMCD = jobs.filter { !QuickTimeTMCDWriter.hasWritableTMCDTrack(in: $0.url) }
+        guard missingTMCD.isEmpty else {
+            let sampleText = missingTMCD
+                .prefix(4)
+                .map { $0.url.lastPathComponent }
+                .joined(separator: "\n")
+            errorMessage = "有 \(missingTMCD.count) 个素材没有可写入的 QuickTime TMCD 轨道，不能直接烧录源文件。\n\(sampleText)\n可在项目设置里改为“复制到新文件夹并烧录”。"
+            statusMessage = "无法烧录源文件：缺少 TMCD 轨道"
+            return
+        }
+
         guard runBurnTimecodeConfirmationPanel(fileCount: jobs.count) else {
             return
         }
 
         Task {
             await burnTimecodeIntoTMCD(jobs: jobs)
+        }
+    }
+
+    private func copyAndBurnTimecodeIntoNewFolder() {
+        guard !isAnalyzing else {
+            errorMessage = "当前有任务正在进行，请完成后再烧录时间码"
+            return
+        }
+        guard !mediaItems.isEmpty else {
+            errorMessage = "请先导入视频"
+            return
+        }
+
+        let jobs = timecodeBurnJobs
+        guard jobs.count == mediaItems.count else {
+            let missingCount = max(0, mediaItems.count - jobs.count)
+            errorMessage = "还有 \(missingCount) 个素材没有有效起始时间码，请先提取或手动输入"
+            statusMessage = "无法烧录：列表时间码不完整"
+            return
+        }
+        guard let folderURL = promptForOutputFolder(title: "选择时间码烧录输出文件夹", prompt: "复制并烧录") else {
+            return
+        }
+
+        let outputJobs = makeFileOutputJobs(destinationFolder: folderURL, requiresClipName: false, requiresTimecode: true, forceMOVExtension: true)
+        Task {
+            await copyAndBurnTimecode(jobs: outputJobs, destinationFolder: folderURL, renameOutputs: false)
         }
     }
 
@@ -1143,9 +1307,261 @@ final class AnalysisViewModel: ObservableObject {
         }
     }
 
+    private func promptForOutputFolder(title: String, prompt: String) -> URL? {
+        let openPanel = NSOpenPanel()
+        openPanel.title = title
+        openPanel.prompt = prompt
+        openPanel.allowsMultipleSelection = false
+        openPanel.canChooseFiles = false
+        openPanel.canChooseDirectories = true
+        openPanel.canCreateDirectories = true
+
+        guard openPanel.runModal() == .OK, let folderURL = openPanel.url else {
+            return nil
+        }
+        return folderURL
+    }
+
+    private func makeFileOutputJobs(
+        destinationFolder: URL,
+        requiresClipName: Bool,
+        requiresTimecode: Bool,
+        forceMOVExtension: Bool
+    ) -> [FileOutputJob] {
+        var usedFileNames = Set<String>()
+        return mediaItems.compactMap { item in
+            let metadata = exportMetadata(for: item)
+            let outputStem: String
+            if requiresClipName {
+                guard let clipName = metadata.clipName else {
+                    return nil
+                }
+                outputStem = outputFileStem(for: clipName)
+            } else {
+                outputStem = item.url.deletingPathExtension().lastPathComponent
+            }
+
+            let timecode: Timecode?
+            if requiresTimecode {
+                guard let startTimecode = metadata.startTimecode else {
+                    return nil
+                }
+                timecode = startTimecode
+            } else {
+                timecode = nil
+            }
+
+            let fileExtension = forceMOVExtension ? "mov" : normalizedFileExtension(for: item.url)
+            let destinationURL = uniqueDestinationURL(
+                in: destinationFolder,
+                stem: outputStem,
+                fileExtension: fileExtension,
+                usedFileNames: &usedFileNames
+            )
+            return FileOutputJob(id: item.id, sourceURL: item.url, destinationURL: destinationURL, timecode: timecode)
+        }
+    }
+
+    private func outputFileStem(for clipName: String) -> String {
+        let rawName = "\(renameOutputPrefix)\(clipName)\(renameOutputSuffix)"
+        let invalidCharacters = CharacterSet(charactersIn: "/:\0")
+            .union(.newlines)
+            .union(.controlCharacters)
+        let sanitized = rawName
+            .components(separatedBy: invalidCharacters)
+            .joined(separator: "_")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .trimmingCharacters(in: CharacterSet(charactersIn: "."))
+
+        return sanitized.isEmpty ? "Untitled" : sanitized
+    }
+
+    private func normalizedFileExtension(for url: URL) -> String {
+        let pathExtension = url.pathExtension.trimmingCharacters(in: .whitespacesAndNewlines)
+        return pathExtension.isEmpty ? "mov" : pathExtension
+    }
+
+    private func uniqueDestinationURL(
+        in folderURL: URL,
+        stem: String,
+        fileExtension: String,
+        usedFileNames: inout Set<String>
+    ) -> URL {
+        let sanitizedExtension = fileExtension.trimmingCharacters(in: CharacterSet(charactersIn: "."))
+        var suffixIndex = 0
+
+        while true {
+            let candidateStem = suffixIndex == 0 ? stem : "\(stem)-\(suffixIndex)"
+            let fileName = sanitizedExtension.isEmpty ? candidateStem : "\(candidateStem).\(sanitizedExtension)"
+            let normalizedName = fileName.lowercased()
+            let candidateURL = folderURL.appendingPathComponent(fileName, isDirectory: false)
+            if !usedFileNames.contains(normalizedName),
+               !FileManager.default.fileExists(atPath: candidateURL.path) {
+                usedFileNames.insert(normalizedName)
+                return candidateURL
+            }
+            suffixIndex += 1
+        }
+    }
+
     private var currentFrameOffset: Int {
         let fps = selectedMediaItem.map(timecodeFrameRateForManualEntry) ?? 24
         return max(0, Int(floor(currentPlaybackSeconds * Double(fps))))
+    }
+
+    private func copyFiles(jobs: [FileOutputJob], destinationFolder: URL, operationTitle: String) async {
+        guard !jobs.isEmpty else {
+            return
+        }
+
+        pausePlayback()
+        isBurningTimecode = true
+        errorMessage = nil
+        batchProgressMessage = "准备\(operationTitle)..."
+        defer {
+            isBurningTimecode = false
+            analyzingItemID = nil
+        }
+
+        let scopedFolderAccess = destinationFolder.startAccessingSecurityScopedResource()
+        defer {
+            if scopedFolderAccess {
+                destinationFolder.stopAccessingSecurityScopedResource()
+            }
+        }
+
+        var successCount = 0
+        var failures: [(fileName: String, message: String)] = []
+
+        for (offset, job) in jobs.enumerated() {
+            guard mediaItems.contains(where: { $0.id == job.id }) else {
+                continue
+            }
+
+            analyzingItemID = job.id
+            batchProgressMessage = "正在\(operationTitle) \(offset + 1) / \(jobs.count)"
+            statusMessage = "正在\(operationTitle) \(job.sourceURL.lastPathComponent) -> \(job.destinationURL.lastPathComponent)"
+
+            let scopedSourceAccess = job.sourceURL.startAccessingSecurityScopedResource()
+            defer {
+                if scopedSourceAccess {
+                    job.sourceURL.stopAccessingSecurityScopedResource()
+                }
+            }
+
+            do {
+                try await Task.detached(priority: .userInitiated) {
+                    try FileManager.default.copyItem(at: job.sourceURL, to: job.destinationURL)
+                }.value
+                successCount += 1
+            } catch {
+                failures.append((job.sourceURL.lastPathComponent, error.localizedDescription))
+            }
+        }
+
+        finishFileOutput(
+            operationTitle: operationTitle,
+            successCount: successCount,
+            failures: failures,
+            successMessage: "已\(operationTitle) \(successCount) 个文件到 \(destinationFolder.lastPathComponent)"
+        )
+    }
+
+    private func copyAndBurnTimecode(jobs: [FileOutputJob], destinationFolder: URL, renameOutputs: Bool) async {
+        guard !jobs.isEmpty else {
+            return
+        }
+
+        pausePlayback()
+        isBurningTimecode = true
+        errorMessage = nil
+        batchProgressMessage = "准备复制烧录..."
+        defer {
+            isBurningTimecode = false
+            analyzingItemID = nil
+        }
+
+        let scopedFolderAccess = destinationFolder.startAccessingSecurityScopedResource()
+        defer {
+            if scopedFolderAccess {
+                destinationFolder.stopAccessingSecurityScopedResource()
+            }
+        }
+
+        let operationTitle = renameOutputs ? "烧录并改名" : "复制烧录"
+        var successCount = 0
+        var failures: [(fileName: String, message: String)] = []
+
+        for (offset, job) in jobs.enumerated() {
+            guard mediaItems.contains(where: { $0.id == job.id }),
+                  let timecode = job.timecode else {
+                continue
+            }
+
+            analyzingItemID = job.id
+            batchProgressMessage = "正在\(operationTitle) \(offset + 1) / \(jobs.count)"
+            statusMessage = "正在\(operationTitle) \(job.sourceURL.lastPathComponent) -> \(job.destinationURL.lastPathComponent)"
+
+            let scopedSourceAccess = job.sourceURL.startAccessingSecurityScopedResource()
+            defer {
+                if scopedSourceAccess {
+                    job.sourceURL.stopAccessingSecurityScopedResource()
+                }
+            }
+
+            do {
+                let report = try await Task.detached(priority: .userInitiated) {
+                    if QuickTimeTMCDWriter.hasWritableTMCDTrack(in: job.sourceURL) {
+                        try FileManager.default.copyItem(at: job.sourceURL, to: job.destinationURL)
+                        return try QuickTimeTMCDWriter.writeStartTimecode(timecode, to: job.destinationURL)
+                    }
+
+                    return try await QuickTimeTMCDWriter.copyAddingStartTimecode(
+                        timecode,
+                        from: job.sourceURL,
+                        to: job.destinationURL
+                    )
+                }.value
+
+                successCount += 1
+                updateMediaItem(job.id) { item in
+                    item.sourceMetadataStatus = "已输出 TMCD：\(report.newFirstFrame)"
+                }
+            } catch {
+                try? FileManager.default.removeItem(at: job.destinationURL)
+                failures.append((job.sourceURL.lastPathComponent, error.localizedDescription))
+            }
+        }
+
+        finishFileOutput(
+            operationTitle: operationTitle,
+            successCount: successCount,
+            failures: failures,
+            successMessage: "已\(operationTitle) \(successCount) 个文件到 \(destinationFolder.lastPathComponent)"
+        )
+    }
+
+    private func finishFileOutput(
+        operationTitle: String,
+        successCount: Int,
+        failures: [(fileName: String, message: String)],
+        successMessage: String
+    ) {
+        analyzingItemID = nil
+        let failedCount = failures.count
+        batchProgressMessage = "\(operationTitle)完成：成功 \(successCount) 个，失败 \(failedCount) 个"
+
+        if failures.isEmpty {
+            errorMessage = nil
+            statusMessage = successMessage
+        } else {
+            let failureText = failures
+                .prefix(4)
+                .map { "\($0.fileName)：\($0.message)" }
+                .joined(separator: "\n")
+            errorMessage = "\(operationTitle)失败 \(failedCount) 个：\n\(failureText)"
+            statusMessage = "\(operationTitle)完成：成功 \(successCount) 个，失败 \(failedCount) 个"
+        }
     }
 
     private func burnTimecodeIntoTMCD(jobs: [TimecodeBurnJob]) async {
@@ -1695,6 +2111,46 @@ final class AnalysisViewModel: ObservableObject {
         return String(format: "%02d:%02d", wholeSeconds / 60, wholeSeconds % 60)
     }
 
+    private func loadProjectOutputSettings() {
+        guard let storeURL = projectOutputSettingsStoreURL,
+              let data = try? Data(contentsOf: storeURL),
+              let settings = try? JSONDecoder().decode(ProjectOutputSettings.self, from: data) else {
+            return
+        }
+
+        isTimecodeBurnOptionEnabled = settings.isTimecodeBurnEnabled
+        timecodeBurnOutputMode = settings.timecodeBurnOutputMode
+        isFileRenameOptionEnabled = settings.isFileRenameEnabled
+        renameOutputPrefix = settings.renamePrefix
+        renameOutputSuffix = settings.renameSuffix
+    }
+
+    private func persistProjectOutputSettings() {
+        guard let storeURL = projectOutputSettingsStoreURL else {
+            return
+        }
+
+        do {
+            try FileManager.default.createDirectory(
+                at: storeURL.deletingLastPathComponent(),
+                withIntermediateDirectories: true
+            )
+            let settings = ProjectOutputSettings(
+                isTimecodeBurnEnabled: isTimecodeBurnOptionEnabled,
+                timecodeBurnOutputMode: timecodeBurnOutputMode,
+                isFileRenameEnabled: isFileRenameOptionEnabled,
+                renamePrefix: renameOutputPrefix,
+                renameSuffix: renameOutputSuffix
+            )
+            let encoder = JSONEncoder()
+            encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+            let data = try encoder.encode(settings)
+            try data.write(to: storeURL, options: .atomic)
+        } catch {
+            errorMessage = "保存项目设置失败：\(error.localizedDescription)"
+        }
+    }
+
     private func loadROIPresets() {
         guard let storeURL = roiPresetStoreURL,
               let data = try? Data(contentsOf: storeURL),
@@ -1778,6 +2234,13 @@ final class AnalysisViewModel: ObservableObject {
             .first?
             .appendingPathComponent("OCRTimecode", isDirectory: true)
             .appendingPathComponent("ROIPresets.json")
+    }
+
+    private var projectOutputSettingsStoreURL: URL? {
+        FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)
+            .first?
+            .appendingPathComponent("OCRTimecode", isDirectory: true)
+            .appendingPathComponent("ProjectOutputSettings.json")
     }
 
     private static let defaultROIPreset = ROIPreset(

@@ -6,6 +6,7 @@ import UniformTypeIdentifiers
 struct ContentView: View {
     @StateObject private var viewModel = AnalysisViewModel()
     @State private var isDropTargeted = false
+    @State private var isShowingProjectSettings = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -32,6 +33,12 @@ struct ContentView: View {
         .frame(minWidth: 1360, minHeight: 920)
         .overlay(alignment: .topLeading) {
             mediaNavigationShortcuts
+        }
+        .overlay(alignment: .bottomTrailing) {
+            projectSettingsLauncher
+        }
+        .sheet(isPresented: $isShowingProjectSettings) {
+            ProjectSettingsView(viewModel: viewModel, isPresented: $isShowingProjectSettings)
         }
         .onAppear {
             if viewModel.mediaItems.isEmpty {
@@ -80,13 +87,36 @@ struct ContentView: View {
             }
             .disabled(!viewModel.canExportDaVinciMetadata || viewModel.isAnalyzing)
 
-            Button {
-                viewModel.confirmAndBurnTimecodeIntoTMCD()
-            } label: {
-                Label(viewModel.isBurningTimecode ? "烧录中" : "烧录时间码", systemImage: "timer")
+            if viewModel.shouldShowTimecodeBurnButton {
+                Button {
+                    viewModel.runTimecodeBurnAction()
+                } label: {
+                    Label(viewModel.isBurningTimecode ? "处理中" : "烧录时间码", systemImage: "timer")
+                }
+                .disabled(!viewModel.canBurnTimecodeIntoTMCD)
+                .help(viewModel.timecodeBurnButtonHelp)
             }
-            .disabled(!viewModel.canBurnTimecodeIntoTMCD)
-            .help("将列表中每个素材的有效起始时间码写入源文件 TMCD 轨道")
+
+            if viewModel.shouldShowFileRenameButton {
+                Button {
+                    viewModel.copyFilesWithMetadataNames()
+                } label: {
+                    Label("复制改名", systemImage: "textformat")
+                }
+                .disabled(!viewModel.canCopyFilesWithMetadataNames)
+                .help("复制到新文件夹，并把输出文件名改为识别或手动写入的文件名")
+            }
+
+            if viewModel.shouldShowBurnAndRenameButton {
+                Button {
+                    viewModel.burnTimecodeAndRenameIntoNewFolder()
+                } label: {
+                    Label("烧录并改名", systemImage: "square.and.arrow.down.on.square")
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(!viewModel.canBurnAndRenameFiles)
+                .help("复制到新文件夹，同时写入 TMCD 并改成元数据文件名")
+            }
         }
         .buttonStyle(.bordered)
         .padding(.horizontal, 18)
@@ -112,6 +142,20 @@ struct ContentView: View {
         .frame(width: 0, height: 0)
         .opacity(0)
         .accessibilityHidden(true)
+    }
+
+    private var projectSettingsLauncher: some View {
+        Button {
+            isShowingProjectSettings = true
+        } label: {
+            Label("项目设置", systemImage: "gearshape")
+                .labelStyle(.iconOnly)
+        }
+        .buttonStyle(.bordered)
+        .keyboardShortcut("p", modifiers: .command)
+        .help("项目设置 (Command-P)")
+        .padding(.trailing, 18)
+        .padding(.bottom, 16)
     }
 
     private var mediaSidebar: some View {
@@ -482,10 +526,12 @@ struct ContentView: View {
                         selection: Binding<ROIPreset.ID?>(
                             get: { viewModel.selectedROIPresetID },
                             set: { presetID in
-                                if let presetID {
-                                    viewModel.applyROIPreset(presetID)
-                                } else {
-                                    viewModel.selectedROIPresetID = nil
+                                performAfterViewUpdate {
+                                    if let presetID {
+                                        viewModel.applyROIPreset(presetID)
+                                    } else {
+                                        viewModel.selectedROIPresetID = nil
+                                    }
                                 }
                             }
                         )
@@ -754,7 +800,11 @@ struct ContentView: View {
                 "源时间码帧率",
                 selection: Binding(
                     get: { viewModel.sourceTimecodeFrameRateSetting },
-                    set: { viewModel.setSourceTimecodeFrameRateSetting($0) }
+                    set: { setting in
+                        performAfterViewUpdate {
+                            viewModel.setSourceTimecodeFrameRateSetting(setting)
+                        }
+                    }
                 )
             ) {
                 ForEach(SourceTimecodeFrameRateSetting.allCases) { setting in
@@ -850,7 +900,11 @@ struct ContentView: View {
                 "",
                 isOn: Binding(
                     get: { viewModel.isFieldEnabled(kind) },
-                    set: { viewModel.setField(kind, isEnabled: $0) }
+                    set: { isEnabled in
+                        performAfterViewUpdate {
+                            viewModel.setField(kind, isEnabled: isEnabled)
+                        }
+                    }
                 )
             )
             .toggleStyle(.switch)
@@ -1013,6 +1067,104 @@ struct ContentView: View {
             "film"
         case .timecode:
             "timer"
+        }
+    }
+
+    private func performAfterViewUpdate(_ action: @escaping @MainActor () -> Void) {
+        Task { @MainActor in
+            action()
+        }
+    }
+}
+
+private struct ProjectSettingsView: View {
+    @ObservedObject var viewModel: AnalysisViewModel
+    @Binding var isPresented: Bool
+
+    var body: some View {
+        VStack(spacing: 0) {
+            HStack {
+                Text("项目设置")
+                    .font(.title2.weight(.semibold))
+                Spacer()
+                Button {
+                    isPresented = false
+                } label: {
+                    Label("完成", systemImage: "checkmark")
+                }
+                .keyboardShortcut(.defaultAction)
+            }
+            .padding(.horizontal, 22)
+            .padding(.vertical, 16)
+
+            Divider()
+
+            ScrollView {
+                VStack(alignment: .leading, spacing: 22) {
+                    settingsSection(title: "时间码烧录") {
+                        Toggle("启用时间码烧录按钮", isOn: $viewModel.isTimecodeBurnOptionEnabled)
+
+                        Picker("输出方式", selection: $viewModel.timecodeBurnOutputMode) {
+                            ForEach(TimecodeBurnOutputMode.allCases) { mode in
+                                Text(mode.title).tag(mode)
+                            }
+                        }
+                        .pickerStyle(.radioGroup)
+                        .disabled(!viewModel.isTimecodeBurnOptionEnabled)
+
+                        Text(viewModel.timecodeBurnOutputMode.description)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+
+                    settingsSection(title: "文件名改名") {
+                        Toggle("启用复制改名按钮", isOn: $viewModel.isFileRenameOptionEnabled)
+
+                        HStack(spacing: 10) {
+                            TextField("前缀", text: $viewModel.renameOutputPrefix)
+                                .textFieldStyle(.roundedBorder)
+                            TextField("后缀", text: $viewModel.renameOutputSuffix)
+                                .textFieldStyle(.roundedBorder)
+                        }
+                        .disabled(!viewModel.isFileRenameOptionEnabled)
+
+                        Text("改名会复制到新文件夹，不修改源文件；文件名来自识别结果或手动输入，同名会自动附加 -1、-2。")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+
+                    settingsSection(title: "快捷键") {
+                        HStack {
+                            Text("打开项目设置")
+                            Spacer()
+                            Text("Command-P")
+                                .font(.body.monospaced())
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                }
+                .padding(22)
+            }
+        }
+        .frame(width: 540, height: 460)
+    }
+
+    private func settingsSection<Content: View>(
+        title: String,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text(title)
+                .font(.headline)
+            VStack(alignment: .leading, spacing: 10) {
+                content()
+            }
+            .padding(14)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Color(nsColor: .controlBackgroundColor))
+            .clipShape(RoundedRectangle(cornerRadius: 8))
         }
     }
 }

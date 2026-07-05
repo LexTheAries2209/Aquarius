@@ -1,3 +1,4 @@
+import AVFoundation
 import Foundation
 
 struct QuickTimeTMCDBurnReport: Sendable {
@@ -29,6 +30,16 @@ struct QuickTimeTMCDBurnReport: Sendable {
 }
 
 enum QuickTimeTMCDWriter {
+    nonisolated static func hasWritableTMCDTrack(in url: URL) -> Bool {
+        do {
+            let data = try Data(contentsOf: url, options: .mappedIfSafe)
+            _ = try findTMCDTrack(data)
+            return true
+        } catch {
+            return false
+        }
+    }
+
     nonisolated static func writeStartTimecode(_ timecode: Timecode, to url: URL) throws -> QuickTimeTMCDBurnReport {
         guard timecode.fps > 0, timecode.fps <= Int(UInt8.max) else {
             throw QuickTimeTMCDWriterError.invalidTimecode(timecode.description)
@@ -72,6 +83,104 @@ enum QuickTimeTMCDWriter {
             newFirstFrame: timecode.description,
             newLastFrame: formatFrameNumber(newLastFrameNumber, fps: timecode.fps),
             oldFrameRate: oldFrameRate,
+            newFrameRate: timecode.fps
+        )
+    }
+
+    nonisolated static func copyAddingStartTimecode(
+        _ timecode: Timecode,
+        from sourceURL: URL,
+        to destinationURL: URL
+    ) async throws -> QuickTimeTMCDBurnReport {
+        guard timecode.fps > 0, timecode.fps <= Int(UInt8.max) else {
+            throw QuickTimeTMCDWriterError.invalidTimecode(timecode.description)
+        }
+        guard !FileManager.default.fileExists(atPath: destinationURL.path) else {
+            throw QuickTimeTMCDWriterError.unsupported("目标文件已存在：\(destinationURL.lastPathComponent)")
+        }
+
+        let asset = AVURLAsset(url: sourceURL)
+        let duration = try await asset.load(.duration)
+        guard duration.isValid, duration.isNumeric, duration.seconds.isFinite, duration.seconds > 0 else {
+            throw QuickTimeTMCDWriterError.unsupported("无法读取源文件时长")
+        }
+
+        let tracks = try await asset.load(.tracks)
+        let passthroughTracks = tracks.filter { $0.mediaType != .timecode }
+        guard !passthroughTracks.isEmpty else {
+            throw QuickTimeTMCDWriterError.unsupported("源文件没有可复制的视频或音频轨道")
+        }
+
+        let reader = try AVAssetReader(asset: asset)
+        let writer = try AVAssetWriter(outputURL: destinationURL, fileType: .mov)
+        var trackPairs: [TrackCopyPair] = []
+
+        for track in passthroughTracks {
+            let descriptions = try await track.load(.formatDescriptions)
+            let output = AVAssetReaderTrackOutput(track: track, outputSettings: nil)
+            output.alwaysCopiesSampleData = false
+            guard reader.canAdd(output) else {
+                throw QuickTimeTMCDWriterError.unsupported("无法读取 \(track.mediaType.rawValue) 轨道")
+            }
+            reader.add(output)
+
+            let input = AVAssetWriterInput(
+                mediaType: track.mediaType,
+                outputSettings: nil,
+                sourceFormatHint: descriptions.first
+            )
+            input.expectsMediaDataInRealTime = false
+            guard writer.canAdd(input) else {
+                throw QuickTimeTMCDWriterError.unsupported("无法写入 \(track.mediaType.rawValue) 轨道")
+            }
+            writer.add(input)
+            trackPairs.append(TrackCopyPair(input: input, output: output))
+        }
+
+        let timecodeDescription = try makeTimecodeFormatDescription(fps: timecode.fps)
+        let timecodeInput = AVAssetWriterInput(
+            mediaType: .timecode,
+            outputSettings: nil,
+            sourceFormatHint: timecodeDescription
+        )
+        timecodeInput.expectsMediaDataInRealTime = false
+        guard writer.canAdd(timecodeInput) else {
+            throw QuickTimeTMCDWriterError.unsupported("无法新建 QuickTime TMCD 轨道")
+        }
+        writer.add(timecodeInput)
+
+        guard writer.startWriting() else {
+            throw QuickTimeTMCDWriterError.avFoundation(writer.error?.localizedDescription ?? "AVAssetWriter 启动失败")
+        }
+        guard reader.startReading() else {
+            writer.cancelWriting()
+            throw QuickTimeTMCDWriterError.avFoundation(reader.error?.localizedDescription ?? "AVAssetReader 启动失败")
+        }
+        writer.startSession(atSourceTime: .zero)
+
+        do {
+            let timecodeSample = try makeTimecodeSampleBuffer(
+                timecode: timecode,
+                duration: duration,
+                formatDescription: timecodeDescription
+            )
+            try append(timecodeSample, to: timecodeInput, writer: writer)
+            try copySamples(from: reader, to: writer, trackPairs: trackPairs)
+            try await finishWriting(writer)
+        } catch {
+            reader.cancelReading()
+            writer.cancelWriting()
+            throw error
+        }
+
+        let durationFrames = max(1, Int(round(duration.seconds * Double(timecode.fps))))
+        return QuickTimeTMCDBurnReport(
+            sampleCount: 1,
+            oldFirstFrame: nil,
+            oldLastFrame: nil,
+            newFirstFrame: timecode.description,
+            newLastFrame: formatFrameNumber(timecode.totalFrames + durationFrames - 1, fps: timecode.fps),
+            oldFrameRate: timecode.fps,
             newFrameRate: timecode.fps
         )
     }
@@ -125,6 +234,161 @@ enum QuickTimeTMCDWriter {
         }
 
         throw QuickTimeTMCDWriterError.missingTMCDTrack
+    }
+
+    nonisolated private static func makeTimecodeFormatDescription(fps: Int) throws -> CMTimeCodeFormatDescription {
+        var description: CMTimeCodeFormatDescription?
+        let status = CMTimeCodeFormatDescriptionCreate(
+            allocator: kCFAllocatorDefault,
+            timeCodeFormatType: kCMTimeCodeFormatType_TimeCode32,
+            frameDuration: CMTime(value: 1, timescale: CMTimeScale(fps)),
+            frameQuanta: UInt32(fps),
+            flags: 0,
+            extensions: nil,
+            formatDescriptionOut: &description
+        )
+        guard status == noErr, let description else {
+            throw QuickTimeTMCDWriterError.avFoundation("无法创建 TMCD format description：\(status)")
+        }
+        return description
+    }
+
+    nonisolated private static func makeTimecodeSampleBuffer(
+        timecode: Timecode,
+        duration: CMTime,
+        formatDescription: CMTimeCodeFormatDescription
+    ) throws -> CMSampleBuffer {
+        let frameNumber = UInt32(timecode.totalFrames)
+        let bytes = [
+            UInt8((frameNumber >> 24) & 0xff),
+            UInt8((frameNumber >> 16) & 0xff),
+            UInt8((frameNumber >> 8) & 0xff),
+            UInt8(frameNumber & 0xff)
+        ]
+
+        var blockBuffer: CMBlockBuffer?
+        var status = CMBlockBufferCreateWithMemoryBlock(
+            allocator: kCFAllocatorDefault,
+            memoryBlock: nil,
+            blockLength: bytes.count,
+            blockAllocator: nil,
+            customBlockSource: nil,
+            offsetToData: 0,
+            dataLength: bytes.count,
+            flags: 0,
+            blockBufferOut: &blockBuffer
+        )
+        guard status == kCMBlockBufferNoErr, let blockBuffer else {
+            throw QuickTimeTMCDWriterError.avFoundation("无法创建 TMCD sample buffer：\(status)")
+        }
+
+        status = CMBlockBufferReplaceDataBytes(
+            with: bytes,
+            blockBuffer: blockBuffer,
+            offsetIntoDestination: 0,
+            dataLength: bytes.count
+        )
+        guard status == kCMBlockBufferNoErr else {
+            throw QuickTimeTMCDWriterError.avFoundation("无法写入 TMCD sample 数据：\(status)")
+        }
+
+        var timing = CMSampleTimingInfo(
+            duration: duration,
+            presentationTimeStamp: .zero,
+            decodeTimeStamp: .invalid
+        )
+        var sampleSize = bytes.count
+        var sampleBuffer: CMSampleBuffer?
+        status = CMSampleBufferCreateReady(
+            allocator: kCFAllocatorDefault,
+            dataBuffer: blockBuffer,
+            formatDescription: formatDescription,
+            sampleCount: 1,
+            sampleTimingEntryCount: 1,
+            sampleTimingArray: &timing,
+            sampleSizeEntryCount: 1,
+            sampleSizeArray: &sampleSize,
+            sampleBufferOut: &sampleBuffer
+        )
+        guard status == noErr, let sampleBuffer else {
+            throw QuickTimeTMCDWriterError.avFoundation("无法创建 TMCD CMSampleBuffer：\(status)")
+        }
+        return sampleBuffer
+    }
+
+    nonisolated private static func append(
+        _ sampleBuffer: CMSampleBuffer,
+        to input: AVAssetWriterInput,
+        writer: AVAssetWriter
+    ) throws {
+        while !input.isReadyForMoreMediaData {
+            if writer.status == .failed {
+                throw QuickTimeTMCDWriterError.avFoundation(writer.error?.localizedDescription ?? "AVAssetWriter 写入失败")
+            }
+            Thread.sleep(forTimeInterval: 0.002)
+        }
+
+        guard input.append(sampleBuffer) else {
+            throw QuickTimeTMCDWriterError.avFoundation(writer.error?.localizedDescription ?? "TMCD sample 写入失败")
+        }
+        input.markAsFinished()
+    }
+
+    nonisolated private static func copySamples(
+        from reader: AVAssetReader,
+        to writer: AVAssetWriter,
+        trackPairs: [TrackCopyPair]
+    ) throws {
+        var finished = Array(repeating: false, count: trackPairs.count)
+
+        while finished.contains(false) {
+            if reader.status == .failed {
+                throw QuickTimeTMCDWriterError.avFoundation(reader.error?.localizedDescription ?? "AVAssetReader 读取失败")
+            }
+            if writer.status == .failed {
+                throw QuickTimeTMCDWriterError.avFoundation(writer.error?.localizedDescription ?? "AVAssetWriter 写入失败")
+            }
+
+            var madeProgress = false
+            for index in trackPairs.indices where !finished[index] {
+                let pair = trackPairs[index]
+                guard pair.input.isReadyForMoreMediaData else {
+                    continue
+                }
+
+                if let sampleBuffer = pair.output.copyNextSampleBuffer() {
+                    guard pair.input.append(sampleBuffer) else {
+                        throw QuickTimeTMCDWriterError.avFoundation(writer.error?.localizedDescription ?? "轨道 sample 写入失败")
+                    }
+                    madeProgress = true
+                } else {
+                    pair.input.markAsFinished()
+                    finished[index] = true
+                    madeProgress = true
+                }
+            }
+
+            if !madeProgress {
+                Thread.sleep(forTimeInterval: 0.002)
+            }
+        }
+    }
+
+    nonisolated private static func finishWriting(_ writer: AVAssetWriter) async throws {
+        nonisolated(unsafe) let unsafeWriter = writer
+        try await withCheckedThrowingContinuation { continuation in
+            unsafeWriter.finishWriting {
+                if unsafeWriter.status == .completed {
+                    continuation.resume()
+                } else {
+                    continuation.resume(
+                        throwing: QuickTimeTMCDWriterError.avFoundation(
+                            unsafeWriter.error?.localizedDescription ?? "AVAssetWriter 完成失败"
+                        )
+                    )
+                }
+            }
+        }
     }
 
     nonisolated private static func parseAtoms(_ data: Data, range: Range<Int>) throws -> [MOVAtom] {
@@ -437,11 +701,22 @@ private struct TMCDTrackLayout: Sendable {
     }
 }
 
+private final class TrackCopyPair: @unchecked Sendable {
+    nonisolated(unsafe) let input: AVAssetWriterInput
+    nonisolated(unsafe) let output: AVAssetReaderOutput
+
+    nonisolated init(input: AVAssetWriterInput, output: AVAssetReaderOutput) {
+        self.input = input
+        self.output = output
+    }
+}
+
 enum QuickTimeTMCDWriterError: LocalizedError, Sendable {
     case invalidTimecode(String)
     case invalidAtom(String)
     case missingTMCDTrack
     case unsupported(String)
+    case avFoundation(String)
 
     nonisolated var errorDescription: String? {
         switch self {
@@ -453,6 +728,8 @@ enum QuickTimeTMCDWriterError: LocalizedError, Sendable {
             "未找到可写入的 QuickTime TMCD 轨道"
         case .unsupported(let message):
             "不支持的 TMCD 布局：\(message)"
+        case .avFoundation(let message):
+            "AVFoundation 写入失败：\(message)"
         }
     }
 }

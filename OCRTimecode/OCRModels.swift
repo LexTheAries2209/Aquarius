@@ -203,6 +203,53 @@ enum SourceTimecodeFrameRateSetting: String, CaseIterable, Codable, Hashable, Id
     }
 }
 
+enum TimecodeBurnOutputMode: String, CaseIterable, Codable, Hashable, Identifiable, Sendable {
+    case sourceFile
+    case copyToFolder
+
+    var id: String { rawValue }
+
+    nonisolated var title: String {
+        switch self {
+        case .sourceFile:
+            "烧录到源文件"
+        case .copyToFolder:
+            "复制到新文件夹并烧录"
+        }
+    }
+
+    nonisolated var description: String {
+        switch self {
+        case .sourceFile:
+            "直接修改列表内原始 MOV/QuickTime 文件；没有 TMCD 轨道的文件会被拒绝。"
+        case .copyToFolder:
+            "源文件不变，输出到新文件夹；没有 TMCD 轨道时会尝试重新封装为带 TMCD 的 MOV。"
+        }
+    }
+}
+
+struct ProjectOutputSettings: Codable, Equatable, Sendable {
+    var isTimecodeBurnEnabled: Bool
+    var timecodeBurnOutputMode: TimecodeBurnOutputMode
+    var isFileRenameEnabled: Bool
+    var renamePrefix: String
+    var renameSuffix: String
+
+    nonisolated init(
+        isTimecodeBurnEnabled: Bool = false,
+        timecodeBurnOutputMode: TimecodeBurnOutputMode = .sourceFile,
+        isFileRenameEnabled: Bool = false,
+        renamePrefix: String = "",
+        renameSuffix: String = ""
+    ) {
+        self.isTimecodeBurnEnabled = isTimecodeBurnEnabled
+        self.timecodeBurnOutputMode = timecodeBurnOutputMode
+        self.isFileRenameEnabled = isFileRenameEnabled
+        self.renamePrefix = renamePrefix
+        self.renameSuffix = renameSuffix
+    }
+}
+
 enum TimecodeSampleStatus: String, Sendable {
     case notApplicable
     case clustered
