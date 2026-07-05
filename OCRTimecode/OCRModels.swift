@@ -232,6 +232,7 @@ struct ProjectOutputSettings: Codable, Equatable, Sendable {
     var isTimecodeBurnEnabled: Bool
     var timecodeBurnOutputMode: TimecodeBurnOutputMode
     var isFileRenameEnabled: Bool
+    var exportsCompanionCSVForRenamedFiles: Bool
     var renamePrefix: String
     var renameSuffix: String
 
@@ -239,14 +240,35 @@ struct ProjectOutputSettings: Codable, Equatable, Sendable {
         isTimecodeBurnEnabled: Bool = false,
         timecodeBurnOutputMode: TimecodeBurnOutputMode = .sourceFile,
         isFileRenameEnabled: Bool = false,
+        exportsCompanionCSVForRenamedFiles: Bool = false,
         renamePrefix: String = "",
         renameSuffix: String = ""
     ) {
         self.isTimecodeBurnEnabled = isTimecodeBurnEnabled
         self.timecodeBurnOutputMode = timecodeBurnOutputMode
         self.isFileRenameEnabled = isFileRenameEnabled
+        self.exportsCompanionCSVForRenamedFiles = exportsCompanionCSVForRenamedFiles
         self.renamePrefix = renamePrefix
         self.renameSuffix = renameSuffix
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case isTimecodeBurnEnabled
+        case timecodeBurnOutputMode
+        case isFileRenameEnabled
+        case exportsCompanionCSVForRenamedFiles
+        case renamePrefix
+        case renameSuffix
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        isTimecodeBurnEnabled = try container.decodeIfPresent(Bool.self, forKey: .isTimecodeBurnEnabled) ?? false
+        timecodeBurnOutputMode = try container.decodeIfPresent(TimecodeBurnOutputMode.self, forKey: .timecodeBurnOutputMode) ?? .sourceFile
+        isFileRenameEnabled = try container.decodeIfPresent(Bool.self, forKey: .isFileRenameEnabled) ?? false
+        exportsCompanionCSVForRenamedFiles = try container.decodeIfPresent(Bool.self, forKey: .exportsCompanionCSVForRenamedFiles) ?? false
+        renamePrefix = try container.decodeIfPresent(String.self, forKey: .renamePrefix) ?? ""
+        renameSuffix = try container.decodeIfPresent(String.self, forKey: .renameSuffix) ?? ""
     }
 }
 

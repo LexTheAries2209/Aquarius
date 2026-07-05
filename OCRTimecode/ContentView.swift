@@ -1124,6 +1124,9 @@ private struct ProjectSettingsView: View {
                     settingsSection(title: "文件名改名") {
                         Toggle("启用复制改名按钮", isOn: $viewModel.isFileRenameOptionEnabled)
 
+                        Toggle("复制改名后自动生成配套 DaVinci CSV", isOn: $viewModel.exportsCompanionCSVForRenamedFiles)
+                            .disabled(!viewModel.isFileRenameOptionEnabled)
+
                         HStack(spacing: 10) {
                             TextField("前缀", text: $viewModel.renameOutputPrefix)
                                 .textFieldStyle(.roundedBorder)
@@ -1132,7 +1135,7 @@ private struct ProjectSettingsView: View {
                         }
                         .disabled(!viewModel.isFileRenameOptionEnabled)
 
-                        Text("改名会复制到新文件夹，不修改源文件；文件名来自识别结果或手动输入，同名会自动附加 -1、-2。")
+                        Text("改名会复制到新文件夹，不修改源文件；文件名来自识别结果或手动输入，同名会自动附加 -1、-2。配套 CSV 会使用改名后的真实文件名作为 Resolve 匹配键。")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                             .fixedSize(horizontal: false, vertical: true)

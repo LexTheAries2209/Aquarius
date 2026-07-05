@@ -79,6 +79,14 @@ final class AnalysisViewModel: ObservableObject {
         didSet { persistProjectOutputSettings() }
     }
     @Published var isFileRenameOptionEnabled = false {
+        didSet {
+            if isFileRenameOptionEnabled && !isLoadingProjectOutputSettings {
+                exportsCompanionCSVForRenamedFiles = true
+            }
+            persistProjectOutputSettings()
+        }
+    }
+    @Published var exportsCompanionCSVForRenamedFiles = false {
         didSet { persistProjectOutputSettings() }
     }
     @Published var renameOutputPrefix = "" {
@@ -94,6 +102,7 @@ final class AnalysisViewModel: ObservableObject {
     private var previewImageTask: Task<Void, Never>?
     private var playbackDurationTask: Task<Void, Never>?
     private var sourceMetadataTasks: [MediaQueueItem.ID: Task<Void, Never>] = [:]
+    private var isLoadingProjectOutputSettings = false
 
     init() {
         loadProjectOutputSettings()
@@ -1432,6 +1441,7 @@ final class AnalysisViewModel: ObservableObject {
 
         var successCount = 0
         var failures: [(fileName: String, message: String)] = []
+        var successfulJobs: [FileOutputJob] = []
 
         for (offset, job) in jobs.enumerated() {
             guard mediaItems.contains(where: { $0.id == job.id }) else {
@@ -1454,15 +1464,23 @@ final class AnalysisViewModel: ObservableObject {
                     try FileManager.default.copyItem(at: job.sourceURL, to: job.destinationURL)
                 }.value
                 successCount += 1
+                successfulJobs.append(job)
             } catch {
                 failures.append((job.sourceURL.lastPathComponent, error.localizedDescription))
             }
         }
 
+        let companionCSVFileName = writeRenamedCompanionCSVIfNeeded(
+            successfulJobs: successfulJobs,
+            destinationFolder: destinationFolder,
+            failures: &failures
+        )
+
         finishFileOutput(
             operationTitle: operationTitle,
             successCount: successCount,
             failures: failures,
+            companionCSVFileName: companionCSVFileName,
             successMessage: "已\(operationTitle) \(successCount) 个文件到 \(destinationFolder.lastPathComponent)"
         )
     }
@@ -1491,6 +1509,7 @@ final class AnalysisViewModel: ObservableObject {
         let operationTitle = renameOutputs ? "烧录并改名" : "复制烧录"
         var successCount = 0
         var failures: [(fileName: String, message: String)] = []
+        var successfulJobs: [FileOutputJob] = []
 
         for (offset, job) in jobs.enumerated() {
             guard mediaItems.contains(where: { $0.id == job.id }),
@@ -1524,6 +1543,7 @@ final class AnalysisViewModel: ObservableObject {
                 }.value
 
                 successCount += 1
+                successfulJobs.append(job)
                 updateMediaItem(job.id) { item in
                     item.sourceMetadataStatus = "已输出 TMCD：\(report.newFirstFrame)"
                 }
@@ -1533,27 +1553,80 @@ final class AnalysisViewModel: ObservableObject {
             }
         }
 
+        let companionCSVFileName = renameOutputs
+            ? writeRenamedCompanionCSVIfNeeded(
+                successfulJobs: successfulJobs,
+                destinationFolder: destinationFolder,
+                failures: &failures
+            )
+            : nil
+
         finishFileOutput(
             operationTitle: operationTitle,
             successCount: successCount,
             failures: failures,
+            companionCSVFileName: companionCSVFileName,
             successMessage: "已\(operationTitle) \(successCount) 个文件到 \(destinationFolder.lastPathComponent)"
         )
+    }
+
+    private func writeRenamedCompanionCSVIfNeeded(
+        successfulJobs: [FileOutputJob],
+        destinationFolder: URL,
+        failures: inout [(fileName: String, message: String)]
+    ) -> String? {
+        guard exportsCompanionCSVForRenamedFiles, !successfulJobs.isEmpty else {
+            return nil
+        }
+
+        let rows = successfulJobs.compactMap { job -> DaVinciMetadataCSVRow? in
+            guard let item = mediaItems.first(where: { $0.id == job.id }) else {
+                return nil
+            }
+            let metadata = exportMetadata(for: item)
+            guard DaVinciMetadataCSVExporter.hasExportableMetadata(metadata) else {
+                return nil
+            }
+            return DaVinciMetadataCSVRow(videoURL: job.destinationURL, metadata: metadata)
+        }
+
+        guard !rows.isEmpty else {
+            return nil
+        }
+
+        batchProgressMessage = "正在生成配套 DaVinci CSV..."
+        do {
+            let csvData = try DaVinciMetadataCSVExporter.makeData(rows: rows)
+            var usedFileNames = Set(successfulJobs.map { $0.destinationURL.lastPathComponent.lowercased() })
+            let csvURL = uniqueDestinationURL(
+                in: destinationFolder,
+                stem: "OCRTimecode_DaVinci_Metadata_for_Renamed_Files",
+                fileExtension: "csv",
+                usedFileNames: &usedFileNames
+            )
+            try csvData.write(to: csvURL, options: .atomic)
+            return csvURL.lastPathComponent
+        } catch {
+            failures.append(("配套 DaVinci CSV", error.localizedDescription))
+            return nil
+        }
     }
 
     private func finishFileOutput(
         operationTitle: String,
         successCount: Int,
         failures: [(fileName: String, message: String)],
+        companionCSVFileName: String?,
         successMessage: String
     ) {
         analyzingItemID = nil
         let failedCount = failures.count
-        batchProgressMessage = "\(operationTitle)完成：成功 \(successCount) 个，失败 \(failedCount) 个"
+        let csvText = companionCSVFileName.map { "，CSV \($0)" } ?? ""
+        batchProgressMessage = "\(operationTitle)完成：成功 \(successCount) 个，失败 \(failedCount) 个\(csvText)"
 
         if failures.isEmpty {
             errorMessage = nil
-            statusMessage = successMessage
+            statusMessage = successMessage + csvText
         } else {
             let failureText = failures
                 .prefix(4)
@@ -2118,14 +2191,20 @@ final class AnalysisViewModel: ObservableObject {
             return
         }
 
+        isLoadingProjectOutputSettings = true
         isTimecodeBurnOptionEnabled = settings.isTimecodeBurnEnabled
         timecodeBurnOutputMode = settings.timecodeBurnOutputMode
         isFileRenameOptionEnabled = settings.isFileRenameEnabled
+        exportsCompanionCSVForRenamedFiles = settings.exportsCompanionCSVForRenamedFiles
         renameOutputPrefix = settings.renamePrefix
         renameOutputSuffix = settings.renameSuffix
+        isLoadingProjectOutputSettings = false
     }
 
     private func persistProjectOutputSettings() {
+        guard !isLoadingProjectOutputSettings else {
+            return
+        }
         guard let storeURL = projectOutputSettingsStoreURL else {
             return
         }
@@ -2139,6 +2218,7 @@ final class AnalysisViewModel: ObservableObject {
                 isTimecodeBurnEnabled: isTimecodeBurnOptionEnabled,
                 timecodeBurnOutputMode: timecodeBurnOutputMode,
                 isFileRenameEnabled: isFileRenameOptionEnabled,
+                exportsCompanionCSVForRenamedFiles: exportsCompanionCSVForRenamedFiles,
                 renamePrefix: renameOutputPrefix,
                 renameSuffix: renameOutputSuffix
             )
