@@ -4,6 +4,31 @@ import Foundation
 import ImageIO
 import Vision
 
+enum AVAssetFrameExtractionError: LocalizedError {
+    case noImage
+
+    nonisolated var errorDescription: String? {
+        switch self {
+        case .noImage:
+            "无法从视频中生成预览帧"
+        }
+    }
+}
+
+extension AVAssetImageGenerator {
+    nonisolated func ocrTimecodeCGImage(at requestedTime: CMTime) async throws -> (image: CGImage, actualTime: CMTime) {
+        try await withCheckedThrowingContinuation { continuation in
+            generateCGImageAsynchronously(for: requestedTime) { image, actualTime, error in
+                if let image {
+                    continuation.resume(returning: (image, actualTime))
+                } else {
+                    continuation.resume(throwing: error ?? AVAssetFrameExtractionError.noImage)
+                }
+            }
+        }
+    }
+}
+
 struct OCRClipAnalyzer {
     private let maximumSamplePointCount = 50
     private let denseSamplingDurationLimit = 10.0 * 60.0
@@ -17,10 +42,10 @@ struct OCRClipAnalyzer {
         url: URL,
         regions: [OCRRegion],
         sourceTimecodeFrameRateSetting: SourceTimecodeFrameRateSetting
-    ) throws -> ClipOCRResult {
+    ) async throws -> ClipOCRResult {
         let asset = AVURLAsset(url: url)
-        let videoFrameRate = detectFrameRate(asset: asset)
-        let duration = safeDuration(asset.duration.seconds)
+        let videoFrameRate = try await detectFrameRate(asset: asset)
+        let duration = safeDuration(try await asset.load(.duration).seconds)
         let sampleTimes = buildBaseSampleTimes(duration: duration)
         let expectedKinds = Set(regions.map(\.kind))
         let generator = AVAssetImageGenerator(asset: asset)
@@ -30,7 +55,7 @@ struct OCRClipAnalyzer {
         generator.requestedTimeToleranceAfter = .zero
         generator.apertureMode = .encodedPixels
 
-        var samples = collectSamples(
+        var samples = await collectSamples(
             at: sampleTimes,
             generator: generator,
             regions: regions
@@ -54,7 +79,7 @@ struct OCRClipAnalyzer {
 
         if !nearbySampleTimes.isEmpty {
             samples.append(
-                contentsOf: collectSamples(
+                contentsOf: await collectSamples(
                     at: nearbySampleTimes,
                     generator: generator,
                     regions: regions
@@ -77,16 +102,16 @@ struct OCRClipAnalyzer {
         at sampleTimes: [Double],
         generator: AVAssetImageGenerator,
         regions: [OCRRegion]
-    ) -> [OCRSample] {
+    ) async -> [OCRSample] {
         var samples: [OCRSample] = []
 
         for seconds in sampleTimes {
             let requestedTime = CMTime(seconds: seconds, preferredTimescale: 600)
-            var actualTime = CMTime.invalid
-            guard let frame = try? generator.copyCGImage(at: requestedTime, actualTime: &actualTime) else {
+            guard let frameResult = try? await generator.ocrTimecodeCGImage(at: requestedTime) else {
                 continue
             }
-            let actualSeconds = safeDuration(actualTime.seconds, fallback: seconds)
+            let frame = frameResult.image
+            let actualSeconds = safeDuration(frameResult.actualTime.seconds, fallback: seconds)
 
             for region in regions {
                 guard let crop = imageProcessor.crop(frame, to: region.normalizedRect),
@@ -112,8 +137,8 @@ struct OCRClipAnalyzer {
         return samples
     }
 
-    nonisolated private func detectFrameRate(asset: AVAsset) -> Double {
-        let nominalFrameRate = asset.tracks(withMediaType: .video).first?.nominalFrameRate ?? 24
+    nonisolated private func detectFrameRate(asset: AVAsset) async throws -> Double {
+        let nominalFrameRate = try await asset.loadTracks(withMediaType: .video).first?.load(.nominalFrameRate) ?? 24
         let frameRate = Double(nominalFrameRate)
         guard frameRate.isFinite, frameRate > 0 else {
             return 24

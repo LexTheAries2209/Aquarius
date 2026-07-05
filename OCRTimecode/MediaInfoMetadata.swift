@@ -16,11 +16,11 @@ struct MediaInfoMetadataSnapshot: Equatable, Sendable {
 enum MediaInfoMetadataReader {
     nonisolated static func read(url: URL) async -> MediaInfoMetadataSnapshot {
         await Task.detached(priority: .utility) {
-            readSynchronously(url: url)
+            await readSnapshot(url: url)
         }.value
     }
 
-    nonisolated private static func readSynchronously(url: URL) -> MediaInfoMetadataSnapshot {
+    nonisolated private static func readSnapshot(url: URL) async -> MediaInfoMetadataSnapshot {
         guard let executableURL = findExecutable() else {
             return MediaInfoMetadataSnapshot(
                 fields: [],
@@ -34,7 +34,7 @@ enum MediaInfoMetadataReader {
             let parsed = try parseFields(from: data, mediaURL: url)
             let timecodeMetadata = merge(
                 parsed.timecodeMetadata,
-                withFrameQuanta: QuickTimeTimecodeMetadataReader.readFrameQuanta(url: url)
+                withFrameQuanta: await QuickTimeTimecodeMetadataReader.readFrameQuanta(url: url)
             )
             return MediaInfoMetadataSnapshot(
                 fields: parsed.fields,
@@ -273,14 +273,14 @@ enum MediaInfoMetadataReader {
 }
 
 private enum QuickTimeTimecodeMetadataReader {
-    nonisolated static func readFrameQuanta(url: URL) -> Int? {
+    nonisolated static func readFrameQuanta(url: URL) async -> Int? {
         let asset = AVURLAsset(url: url)
-        guard let track = asset.tracks(withMediaType: .timecode).first,
-              let description = track.formatDescriptions.first else {
+        guard let track = try? await asset.loadTracks(withMediaType: .timecode).first,
+              let description = try? await track.load(.formatDescriptions).first else {
             return nil
         }
 
-        let frameQuanta = CMTimeCodeFormatDescriptionGetFrameQuanta(description as! CMTimeCodeFormatDescription)
+        let frameQuanta = CMTimeCodeFormatDescriptionGetFrameQuanta(description)
         guard frameQuanta > 0 else {
             return nil
         }

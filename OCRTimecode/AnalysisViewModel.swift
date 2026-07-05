@@ -57,6 +57,7 @@ final class AnalysisViewModel: ObservableObject {
     private var securityScopedURL: URL?
     private var isUsingSecurityScopedAccess = false
     private var playerTimeObserver: Any?
+    private var previewImageTask: Task<Void, Never>?
     private var playbackDurationTask: Task<Void, Never>?
     private var sourceMetadataTasks: [MediaQueueItem.ID: Task<Void, Never>] = [:]
 
@@ -65,6 +66,7 @@ final class AnalysisViewModel: ObservableObject {
     }
 
     deinit {
+        previewImageTask?.cancel()
         playbackDurationTask?.cancel()
         sourceMetadataTasks.values.forEach { $0.cancel() }
         if isUsingSecurityScopedAccess {
@@ -1298,7 +1300,7 @@ final class AnalysisViewModel: ObservableObject {
         do {
             let frameRateSetting = self.sourceTimecodeFrameRateSetting
             let output = try await Task.detached(priority: .userInitiated) {
-                try OCRClipAnalyzer().analyze(
+                try await OCRClipAnalyzer().analyze(
                     url: url,
                     regions: regions,
                     sourceTimecodeFrameRateSetting: frameRateSetting
@@ -1333,6 +1335,7 @@ final class AnalysisViewModel: ObservableObject {
 
         player?.pause()
         removePlayerTimeObserver()
+        previewImageTask?.cancel()
         playbackDurationTask?.cancel()
         releaseSecurityScopedAccess()
 
@@ -1361,14 +1364,27 @@ final class AnalysisViewModel: ObservableObject {
 
         loadSourceMetadataIfNeeded(for: item.id)
 
-        do {
-            previewImage = try makePreviewImage(for: item.url)
-            statusMessage = "已选择 \(item.url.lastPathComponent)"
-        } catch {
-            let detail = "\(error.localizedDescription)\n\(item.url.path)"
-            previewDiagnosticMessage = "预览取帧失败：\(detail)"
-            errorMessage = "预览取帧失败：\(error.localizedDescription)"
-            statusMessage = "已选择 \(item.url.lastPathComponent)，但预览取帧失败"
+        statusMessage = "已选择 \(item.url.lastPathComponent)"
+        let previewItemID = item.id
+        let previewURL = item.url
+        previewImageTask = Task { @MainActor [weak self] in
+            do {
+                let image = try await self?.makePreviewImage(for: previewURL)
+                guard !Task.isCancelled,
+                      self?.selectedMediaItemID == previewItemID else {
+                    return
+                }
+                self?.previewImage = image
+            } catch {
+                guard !Task.isCancelled,
+                      self?.selectedMediaItemID == previewItemID else {
+                    return
+                }
+                let detail = "\(error.localizedDescription)\n\(previewURL.path)"
+                self?.previewDiagnosticMessage = "预览取帧失败：\(detail)"
+                self?.errorMessage = "预览取帧失败：\(error.localizedDescription)"
+                self?.statusMessage = "已选择 \(previewURL.lastPathComponent)，但预览取帧失败"
+            }
         }
 
         let asset = AVURLAsset(url: item.url)
@@ -1383,6 +1399,7 @@ final class AnalysisViewModel: ObservableObject {
     private func unloadCurrentVideo() {
         player?.pause()
         removePlayerTimeObserver()
+        previewImageTask?.cancel()
         playbackDurationTask?.cancel()
         releaseSecurityScopedAccess()
         player = nil
@@ -1518,7 +1535,7 @@ final class AnalysisViewModel: ObservableObject {
         isUsingSecurityScopedAccess = false
     }
 
-    private func makePreviewImage(for url: URL) throws -> NSImage {
+    private func makePreviewImage(for url: URL) async throws -> NSImage {
         let asset = AVURLAsset(url: url)
         let generator = AVAssetImageGenerator(asset: asset)
         generator.appliesPreferredTrackTransform = true
@@ -1529,10 +1546,8 @@ final class AnalysisViewModel: ObservableObject {
         var lastError: Error?
         for seconds in [1.0, 0.25, 0.0] {
             do {
-                let image = try generator.copyCGImage(
-                    at: CMTime(seconds: seconds, preferredTimescale: 600),
-                    actualTime: nil
-                )
+                let frame = try await generator.ocrTimecodeCGImage(at: CMTime(seconds: seconds, preferredTimescale: 600))
+                let image = frame.image
                 return NSImage(cgImage: image, size: NSSize(width: image.width, height: image.height))
             } catch {
                 lastError = error
