@@ -74,6 +74,24 @@ private func drawStar(at point: NSPoint, radius: CGFloat, color: NSColor) {
     cross.stroke()
 }
 
+private func drawEngravedStroke(from start: NSPoint, to end: NSPoint, count: Int, color: NSColor, width: CGFloat) {
+    guard count > 1 else { return }
+    for index in 0..<count {
+        let t = CGFloat(index) / CGFloat(count - 1)
+        let sx = start.x + (end.x - start.x) * t
+        let sy = start.y + (end.y - start.y) * t
+        let offset = CGFloat(index - count / 2) * width * 2.1
+        drawLine(
+            [
+                NSPoint(x: sx - width * 8, y: sy + offset),
+                NSPoint(x: sx + width * 20, y: sy - offset * 0.28)
+            ],
+            color: color,
+            width: width
+        )
+    }
+}
+
 private func drawPaperTexture(in rect: NSRect, seed: UInt64, density: Int, alpha: CGFloat) {
     var random = LCG(seed: seed)
     for _ in 0..<density {
@@ -136,42 +154,158 @@ private func drawEngravingField(size: CGFloat, topRect: NSRect, blue: NSColor) {
         drawStar(at: star, radius: CGFloat(index % 3 + 4) / 1024 * size, color: ink)
     }
 
+    let symbolInk = NSColor(white: 0.10, alpha: 0.11)
     for row in 0..<2 {
         let y = topRect.minY + size * (0.14 + CGFloat(row) * 0.095)
         for segment in 0..<3 {
-            let startX = size * (0.11 + CGFloat(segment) * 0.125)
+            let startX = size * (0.08 + CGFloat(segment) * 0.13)
             let path = NSBezierPath()
             path.move(to: NSPoint(x: startX, y: y))
-            path.line(to: NSPoint(x: startX + size * 0.038, y: y + size * 0.052))
-            path.line(to: NSPoint(x: startX + size * 0.076, y: y))
-            path.line(to: NSPoint(x: startX + size * 0.114, y: y + size * 0.052))
-            path.lineWidth = size * 0.024
+            path.line(to: NSPoint(x: startX + size * 0.040, y: y + size * 0.058))
+            path.line(to: NSPoint(x: startX + size * 0.080, y: y))
+            path.line(to: NSPoint(x: startX + size * 0.120, y: y + size * 0.058))
+            path.lineWidth = size * 0.030
             path.lineCapStyle = .butt
-            NSColor(white: 0.10, alpha: 0.18).setStroke()
+            symbolInk.setStroke()
             path.stroke()
         }
     }
 
+    let figureFill = NSColor(white: 0.97, alpha: 0.52)
+    let figureStroke = NSColor(white: 0.10, alpha: 0.48)
+
+    let head = NSBezierPath(ovalIn: NSRect(
+        x: size * 0.155,
+        y: topRect.minY + size * 0.405,
+        width: size * 0.105,
+        height: size * 0.125
+    ))
+    NSColor(white: 0.96, alpha: 0.58).setFill()
+    figureStroke.setStroke()
+    head.lineWidth = size * 0.0045
+    head.fill()
+    head.stroke()
+
+    let hair = NSBezierPath()
+    hair.move(to: NSPoint(x: size * 0.160, y: topRect.minY + size * 0.500))
+    hair.curve(
+        to: NSPoint(x: size * 0.260, y: topRect.minY + size * 0.472),
+        controlPoint1: NSPoint(x: size * 0.185, y: topRect.minY + size * 0.565),
+        controlPoint2: NSPoint(x: size * 0.250, y: topRect.minY + size * 0.535)
+    )
+    hair.lineWidth = size * 0.006
+    ink.setStroke()
+    hair.stroke()
+    for index in 0..<11 {
+        let x = size * (0.168 + CGFloat(index) * 0.009)
+        let curl = NSBezierPath()
+        curl.move(to: NSPoint(x: x, y: topRect.minY + size * 0.505))
+        curl.curve(
+            to: NSPoint(x: x + size * 0.018, y: topRect.minY + size * 0.450),
+            controlPoint1: NSPoint(x: x + size * 0.030, y: topRect.minY + size * 0.515),
+            controlPoint2: NSPoint(x: x - size * 0.012, y: topRect.minY + size * 0.470)
+        )
+        curl.lineWidth = size * 0.0018
+        paleInk.setStroke()
+        curl.stroke()
+    }
+
+    let body = NSBezierPath()
+    body.move(to: NSPoint(x: size * 0.170, y: topRect.minY + size * 0.405))
+    body.curve(
+        to: NSPoint(x: size * 0.485, y: topRect.minY + size * 0.285),
+        controlPoint1: NSPoint(x: size * 0.230, y: topRect.minY + size * 0.340),
+        controlPoint2: NSPoint(x: size * 0.380, y: topRect.minY + size * 0.372)
+    )
+    body.curve(
+        to: NSPoint(x: size * 0.335, y: topRect.minY + size * 0.105),
+        controlPoint1: NSPoint(x: size * 0.450, y: topRect.minY + size * 0.200),
+        controlPoint2: NSPoint(x: size * 0.410, y: topRect.minY + size * 0.135)
+    )
+    body.curve(
+        to: NSPoint(x: size * 0.120, y: topRect.minY + size * 0.170),
+        controlPoint1: NSPoint(x: size * 0.235, y: topRect.minY + size * 0.080),
+        controlPoint2: NSPoint(x: size * 0.160, y: topRect.minY + size * 0.120)
+    )
+    body.curve(
+        to: NSPoint(x: size * 0.170, y: topRect.minY + size * 0.405),
+        controlPoint1: NSPoint(x: size * 0.070, y: topRect.minY + size * 0.260),
+        controlPoint2: NSPoint(x: size * 0.120, y: topRect.minY + size * 0.360)
+    )
+    body.close()
+    body.lineWidth = size * 0.005
+    figureFill.setFill()
+    figureStroke.setStroke()
+    body.fill()
+    body.stroke()
+
+    for index in 0..<22 {
+        let t = CGFloat(index) / 21
+        let start = NSPoint(x: size * (0.145 + t * 0.295), y: topRect.minY + size * (0.185 + sin(t * .pi) * 0.090))
+        let end = NSPoint(x: start.x + size * 0.080, y: start.y + size * (0.185 - t * 0.050))
+        drawLine([start, end], color: NSColor(white: 0.10, alpha: 0.15), width: size * 0.0014)
+    }
+    drawEngravedStroke(
+        from: NSPoint(x: size * 0.145, y: topRect.minY + size * 0.160),
+        to: NSPoint(x: size * 0.410, y: topRect.minY + size * 0.320),
+        count: 18,
+        color: NSColor(white: 0.10, alpha: 0.10),
+        width: size * 0.0011
+    )
+
+    let rearArm = NSBezierPath()
+    rearArm.move(to: NSPoint(x: size * 0.255, y: topRect.minY + size * 0.360))
+    rearArm.curve(
+        to: NSPoint(x: size * 0.468, y: topRect.minY + size * 0.468),
+        controlPoint1: NSPoint(x: size * 0.315, y: topRect.minY + size * 0.435),
+        controlPoint2: NSPoint(x: size * 0.400, y: topRect.minY + size * 0.450)
+    )
+    rearArm.lineWidth = size * 0.010
+    figureStroke.setStroke()
+    rearArm.stroke()
+
     NSGraphicsContext.saveGraphicsState()
     let transform = NSAffineTransform()
-    transform.translateX(by: size * 0.28, yBy: topRect.minY + size * 0.24)
-    transform.rotate(byDegrees: -17)
+    transform.translateX(by: size * 0.470, yBy: topRect.minY + size * 0.410)
+    transform.rotate(byDegrees: -24)
     transform.concat()
-    let urn = NSBezierPath(roundedRect: NSRect(x: -size * 0.12, y: -size * 0.04, width: size * 0.24, height: size * 0.21), xRadius: size * 0.06, yRadius: size * 0.05)
+    let urn = NSBezierPath()
+    urn.move(to: NSPoint(x: -size * 0.105, y: -size * 0.085))
+    urn.curve(
+        to: NSPoint(x: size * 0.110, y: -size * 0.055),
+        controlPoint1: NSPoint(x: -size * 0.045, y: -size * 0.135),
+        controlPoint2: NSPoint(x: size * 0.085, y: -size * 0.130)
+    )
+    urn.curve(
+        to: NSPoint(x: size * 0.095, y: size * 0.125),
+        controlPoint1: NSPoint(x: size * 0.150, y: size * 0.015),
+        controlPoint2: NSPoint(x: size * 0.130, y: size * 0.085)
+    )
+    urn.curve(
+        to: NSPoint(x: -size * 0.095, y: size * 0.105),
+        controlPoint1: NSPoint(x: size * 0.030, y: size * 0.170),
+        controlPoint2: NSPoint(x: -size * 0.050, y: size * 0.160)
+    )
+    urn.curve(
+        to: NSPoint(x: -size * 0.105, y: -size * 0.085),
+        controlPoint1: NSPoint(x: -size * 0.135, y: size * 0.050),
+        controlPoint2: NSPoint(x: -size * 0.150, y: -size * 0.030)
+    )
+    urn.close()
     urn.lineWidth = size * 0.006
-    NSColor(white: 0.95, alpha: 0.65).setFill()
+    NSColor(white: 0.97, alpha: 0.64).setFill()
     urn.fill()
     ink.setStroke()
     urn.stroke()
-    for offset in stride(from: -0.09, through: 0.09, by: 0.03) {
+    for offset in stride(from: -0.075, through: 0.075, by: 0.025) {
         let line = NSBezierPath()
-        line.move(to: NSPoint(x: size * CGFloat(offset), y: -size * 0.035))
+        line.move(to: NSPoint(x: size * CGFloat(offset), y: -size * 0.075))
         line.curve(
-            to: NSPoint(x: size * CGFloat(offset * 0.62), y: size * 0.16),
-            controlPoint1: NSPoint(x: size * CGFloat(offset * 1.5), y: size * 0.035),
-            controlPoint2: NSPoint(x: size * CGFloat(offset * 1.1), y: size * 0.105)
+            to: NSPoint(x: size * CGFloat(offset * 0.55), y: size * 0.120),
+            controlPoint1: NSPoint(x: size * CGFloat(offset * 1.55), y: size * 0.015),
+            controlPoint2: NSPoint(x: size * CGFloat(offset * 1.00), y: size * 0.080)
         )
-        line.lineWidth = size * 0.0016
+        line.lineWidth = size * 0.0018
         paleInk.setStroke()
         line.stroke()
     }
@@ -179,23 +313,23 @@ private func drawEngravingField(size: CGFloat, topRect: NSRect, blue: NSColor) {
 
     for i in 0..<7 {
         drawWave(
-            y: topRect.minY + size * (0.12 + CGFloat(i) * 0.037),
-            amplitude: size * 0.010,
+            y: topRect.minY + size * (0.205 + CGFloat(i) * 0.037),
+            amplitude: size * 0.012,
             period: size * 0.16,
-            x0: size * 0.27,
-            x1: size * 0.95,
+            x0: size * 0.425,
+            x1: size * 0.96,
             color: i % 2 == 0 ? waterBlue : paleInk,
-            width: size * 0.0022
+            width: size * 0.0024
         )
     }
 
     for i in 0..<34 {
-        let y = topRect.minY + size * (0.18 + CGFloat(i) * 0.012)
+        let y = topRect.minY + size * (0.145 + CGFloat(i) * 0.012)
         drawWave(
             y: y,
             amplitude: size * 0.004,
             period: size * 0.11,
-            x0: size * 0.43,
+            x0: size * 0.38,
             x1: size * 0.98,
             color: NSColor(white: 0.08, alpha: 0.12),
             width: size * 0.0008
@@ -255,16 +389,16 @@ private func drawBlueLabel(size: CGFloat, labelRect: NSRect, blue: NSColor) {
 private func drawText(size: CGFloat, labelRect: NSRect, blue: NSColor) {
     let betaParagraph = NSMutableParagraphStyle()
     betaParagraph.alignment = .right
-    betaParagraph.lineSpacing = -size * 0.006
+    betaParagraph.lineSpacing = -size * 0.004
 
     let betaAttributes: [NSAttributedString.Key: Any] = [
-        .font: font(named: "SFProDisplay-Bold", size: size * 0.088, fallbackWeight: .bold),
+        .font: font(named: "SFProDisplay-Bold", size: size * 0.080, fallbackWeight: .bold),
         .foregroundColor: blue,
         .paragraphStyle: betaParagraph,
         .kern: size * 0.002
     ]
     ("Beta\nRelease" as NSString).draw(
-        in: NSRect(x: size * 0.55, y: labelRect.maxY + size * 0.035, width: size * 0.40, height: size * 0.18),
+        in: NSRect(x: size * 0.56, y: labelRect.maxY + size * 0.088, width: size * 0.38, height: size * 0.23),
         withAttributes: betaAttributes
     )
 
@@ -272,24 +406,30 @@ private func drawText(size: CGFloat, labelRect: NSRect, blue: NSColor) {
     nameParagraph.alignment = .left
     nameParagraph.lineBreakMode = .byClipping
 
-    var nameSize = size * 0.142
+    var nameSize = size * 0.192
     var attributes: [NSAttributedString.Key: Any] = [:]
-    while nameSize > size * 0.08 {
+    var measured = NSSize(width: 0, height: 0)
+    while nameSize > size * 0.09 {
         attributes = [
-            .font: font(named: "SFProDisplay-Semibold", size: nameSize, fallbackWeight: .semibold),
+            .font: font(named: "AvenirNextCondensed-Heavy", size: nameSize, fallbackWeight: .heavy),
             .foregroundColor: NSColor.white,
             .paragraphStyle: nameParagraph,
-            .kern: size * 0.0015
+            .kern: size * 0.006
         ]
-        let measured = ("Aquarius" as NSString).size(withAttributes: attributes)
-        if measured.width < size * 0.86 {
+        measured = ("Aquarius" as NSString).size(withAttributes: attributes)
+        if measured.width < size * 0.86 && measured.height < labelRect.height * 0.72 {
             break
         }
         nameSize -= size * 0.005
     }
 
     ("Aquarius" as NSString).draw(
-        in: NSRect(x: size * 0.088, y: size * 0.088, width: size * 0.88, height: labelRect.height * 0.58),
+        in: NSRect(
+            x: size * 0.086,
+            y: labelRect.midY - measured.height * 0.58,
+            width: size * 0.88,
+            height: measured.height * 1.20
+        ),
         withAttributes: attributes
     )
 }
