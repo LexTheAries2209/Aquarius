@@ -223,4 +223,8 @@ The code may still open other containers through AVFoundation, but those formats
 - `work/` contains local smoke-test utilities, media experiments, and Resolve metadata tests.
 - Generated module caches, compiled smoke-test binaries, Xcode user data, local traces, and build outputs are ignored by `.gitignore`.
 
-No license file is currently included.
+## License / 授权
+
+OCRTimecode is licensed under the GNU General Public License v3.0 only (`GPL-3.0-only`). See [LICENSE](LICENSE).
+
+OCRTimecode 使用 GNU General Public License v3.0 only (`GPL-3.0-only`) 授权。使用、修改和分发本项目时，请遵守 [LICENSE](LICENSE) 中的条款。
