@@ -1,0 +1,39 @@
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon?
+._*
+
+# Xcode user state and build products
+build/
+Build/
+DerivedData/
+*.xcuserstate
+*.xcscmblueprint
+xcuserdata/
+*.moved-aside
+*.hmap
+*.ipa
+*.dSYM/
+*.dSYM.zip
+*.xcresult
+
+# Swift build artifacts
+.build/
+.swiftpm/
+
+# Local app/runtime traces
+.traces/
+*.trace
+
+# Local smoke-test build products
+work/ModuleCache/
+work/*_smoke
+work/QuickTimeReelMetadataSmoke
+work/PatchMOVTMCDStart
+work/WriteOrdinaryTimecodeMetadata
+work/extract_resolve_manual
+work/quicktime_metadata_tests/QuickTimeMetadataRewriteSmoke
+work/reel_metadata_tests/QuickTimeReelMetadataSmoke
+work/tmcd_copy_smoke_outputs/
