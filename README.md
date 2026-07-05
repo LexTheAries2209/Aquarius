@@ -227,6 +227,10 @@ The code may still open other containers through AVFoundation, but those formats
 
 ## License / 授权
 
-Aquarius is licensed under the GNU General Public License v3.0 only (`GPL-3.0-only`). See [LICENSE](LICENSE).
+Aquarius source code is licensed under the GNU General Public License v3.0 only (`GPL-3.0-only`). See [LICENSE](LICENSE).
 
-Aquarius 使用 GNU General Public License v3.0 only (`GPL-3.0-only`) 授权。使用、修改和分发本项目时，请遵守 [LICENSE](LICENSE) 中的条款。
+Aquarius 源代码使用 GNU General Public License v3.0 only (`GPL-3.0-only`) 授权。使用、修改和分发本项目源代码时，请遵守 [LICENSE](LICENSE) 中的条款。
+
+App icons, branding assets, and bundled sample videos are not covered by the GPLv3 source-code license unless explicitly stated otherwise.
+
+软件图标、品牌视觉资源以及内置样片视频不属于 GPLv3 源代码授权范围，除非另有明确说明。
