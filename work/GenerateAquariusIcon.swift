@@ -398,7 +398,7 @@ private func drawText(size: CGFloat, labelRect: NSRect, blue: NSColor) {
         .kern: size * 0.002
     ]
     ("Beta\nRelease" as NSString).draw(
-        in: NSRect(x: size * 0.56, y: labelRect.maxY + size * 0.088, width: size * 0.38, height: size * 0.23),
+        in: NSRect(x: size * 0.56, y: labelRect.maxY + size * 0.062, width: size * 0.38, height: size * 0.23),
         withAttributes: betaAttributes
     )
 
@@ -406,7 +406,7 @@ private func drawText(size: CGFloat, labelRect: NSRect, blue: NSColor) {
     nameParagraph.alignment = .left
     nameParagraph.lineBreakMode = .byClipping
 
-    var nameSize = size * 0.192
+    var nameSize = size * 0.178
     var attributes: [NSAttributedString.Key: Any] = [:]
     var measured = NSSize(width: 0, height: 0)
     while nameSize > size * 0.09 {
@@ -426,7 +426,7 @@ private func drawText(size: CGFloat, labelRect: NSRect, blue: NSColor) {
     ("Aquarius" as NSString).draw(
         in: NSRect(
             x: size * 0.086,
-            y: labelRect.midY - measured.height * 0.58,
+            y: labelRect.midY - measured.height * 0.58 - labelRect.height * 0.05,
             width: size * 0.88,
             height: measured.height * 1.20
         ),
