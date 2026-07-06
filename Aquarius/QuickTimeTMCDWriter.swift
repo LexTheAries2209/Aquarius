@@ -43,6 +43,7 @@ enum QuickTimeTMCDWriter {
     }
 
     nonisolated static func writeStartTimecode(_ timecode: Timecode, to url: URL) throws -> QuickTimeTMCDBurnReport {
+        try validateWritableTimecode(timecode)
         guard timecode.fps > 0, timecode.fps <= Int(UInt8.max) else {
             throw QuickTimeTMCDWriterError.invalidTimecode(timecode.description)
         }
@@ -94,6 +95,7 @@ enum QuickTimeTMCDWriter {
         from sourceURL: URL,
         to destinationURL: URL
     ) async throws -> QuickTimeTMCDBurnReport {
+        try validateWritableTimecode(timecode)
         guard timecode.fps > 0, timecode.fps <= Int(UInt8.max) else {
             throw QuickTimeTMCDWriterError.invalidTimecode(timecode.description)
         }
@@ -185,6 +187,16 @@ enum QuickTimeTMCDWriter {
             oldFrameRate: timecode.fps,
             newFrameRate: timecode.fps
         )
+    }
+
+    nonisolated private static func validateWritableTimecode(_ timecode: Timecode) throws {
+        if timecode.isDropFrame {
+            throw QuickTimeTMCDWriterError.unsupported("29.97 DF 的 QuickTime TMCD 写回暂未启用，请先导出 DaVinci CSV 或等待 DF 标志验证后再烧录")
+        }
+
+        guard abs(timecode.playbackFrameRate - Double(timecode.fps)) < 0.001 else {
+            throw QuickTimeTMCDWriterError.unsupported("23.976/29.97 等非整数速率的 TMCD 写回暂未启用，请先导出 DaVinci CSV")
+        }
     }
 
     nonisolated private static func findTMCDTrack(_ data: Data) throws -> TMCDTrackLayout {

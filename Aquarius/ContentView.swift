@@ -730,7 +730,7 @@ struct ContentView: View {
                         )
                     )
 
-                    Text("起始 TC 按 \(viewModel.selectedManualTimecodeFrameRate) fps 解析；CSV 匹配仍使用媒体原始文件名。")
+                    Text("起始 TC 按 \(viewModel.selectedManualTimecodeFrameRate) 解析；CSV 匹配仍使用媒体原始文件名。")
                         .font(.caption2)
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
@@ -795,7 +795,7 @@ struct ContentView: View {
 
     private var timecodeSettingsAndDiagnostics: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("时间码设置 / 检测")
+            Text("时间码设置")
                 .font(.headline)
 
             Picker(
@@ -813,16 +813,31 @@ struct ContentView: View {
                     Text(setting.title).tag(setting)
                 }
             }
-            .pickerStyle(.segmented)
+            .pickerStyle(.menu)
 
             Text("应用于整个列表；修改后已有结果需重新提取。")
                 .font(.caption2)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
 
+            if viewModel.showsTimecodeDiagnosticsDetails {
+                timecodeDiagnosticsDetails
+            } else if let result = viewModel.result,
+                      let diagnostics = result.timecodeDiagnostics,
+                      diagnostics.status != .consistent,
+                      diagnostics.status != .notChecked {
+                Label(diagnostics.status.title, systemImage: "exclamationmark.triangle")
+                    .font(.caption)
+                    .foregroundStyle(color(for: diagnostics.status))
+            }
+        }
+    }
+
+    private var timecodeDiagnosticsDetails: some View {
+        VStack(alignment: .leading, spacing: 10) {
             if let result = viewModel.result {
                 ResultRow(title: "视频帧率", value: String(format: "%.3f fps", result.videoFrameRate))
-                ResultRow(title: "识别TC", value: result.timecodeDiagnostics?.sourceFrameRateDisplay ?? "\(result.fps)")
+                ResultRow(title: "源TC帧率", value: result.timecodeDiagnostics?.sourceFrameRateDisplay ?? "\(result.fps)")
                 ResultRow(title: "当前TMCD", value: viewModel.selectedTimecodeMetadata?.displayText ?? "未检测到")
 
                 if let diagnostics = result.timecodeDiagnostics {
@@ -864,7 +879,7 @@ struct ContentView: View {
                     .foregroundStyle(.secondary)
             }
 
-            Text("23.976 当前按 24 帧号制处理；29.97 drop-frame 留待后续支持。")
+            Text("自动仅推断 24/25/30；23.976 和 29.97 需手动指定。29.97 DF 请使用分号时间码。")
                 .font(.caption2)
                 .foregroundStyle(.secondary)
         }
@@ -1106,6 +1121,15 @@ private struct ProjectSettingsView: View {
 
             ScrollView {
                 VStack(alignment: .leading, spacing: 22) {
+                    settingsSection(title: "时间码显示") {
+                        Toggle("显示时间码检测详情", isOn: $viewModel.showsTimecodeDiagnosticsDetails)
+
+                        Text("关闭时右侧只保留源时间码帧率控制；检测到帧率不一致或高风险时仍会显示简短提示。")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+
                     settingsSection(title: "时间码烧录") {
                         Toggle("启用时间码烧录按钮", isOn: $viewModel.isTimecodeBurnOptionEnabled)
 
@@ -1156,7 +1180,7 @@ private struct ProjectSettingsView: View {
                 .padding(22)
             }
         }
-        .frame(width: 540, height: 460)
+        .frame(width: 540, height: 520)
     }
 
     private func settingsSection<Content: View>(
@@ -1505,7 +1529,7 @@ private struct ROIEditorOverlay: View {
                     if isSelected {
                         selectedRegionLabel(region.kind.title, rect: rect, canvasSize: proxy.size)
 
-                        ForEach(handlePoints(for: rect), id: \.self) { point in
+                        ForEach(Array(handlePoints(for: rect).enumerated()), id: \.offset) { _, point in
                             RoundedRectangle(cornerRadius: 2)
                                 .fill(Color(nsColor: .windowBackgroundColor).opacity(0.92))
                                 .frame(width: 8, height: 8)
