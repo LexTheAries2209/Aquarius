@@ -16,7 +16,7 @@ struct MediaInfoMetadataSnapshot: Equatable, Sendable {
 }
 
 enum MediaInfoMetadataReader {
-    nonisolated private static let missingMediaInfoStatus =
+    private static let missingMediaInfoStatus =
         "未找到 mediainfo。Aquarius 不内置 MediaInfo CLI；如需完整源文件元数据，可安装：brew install media-info，" +
         "或下载 macOS CLI：https://mediaarea.net/en/MediaInfo/Download/Mac_OS。安装后请确保终端可运行 mediainfo，并重新导入素材。"
 
