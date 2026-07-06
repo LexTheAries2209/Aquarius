@@ -19,6 +19,9 @@ xcuserdata/
 *.dSYM.zip
 *.xcresult
 
+# Local archive of older app builds and source snapshots
+Aquarius旧版软件/
+
 # Swift build artifacts
 .build/
 .swiftpm/
