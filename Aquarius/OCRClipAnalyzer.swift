@@ -574,7 +574,7 @@ private enum OCRConsensusResolver {
             maxDeviationFrames: maxDeviation,
             driftFramesPerMinute: drift
         )
-        var notes = diagnosticNotes(
+        let notes = diagnosticNotes(
             setting: setting,
             fps: fps,
             samples: samples,
@@ -584,20 +584,6 @@ private enum OCRConsensusResolver {
             driftFramesPerMinute: drift,
             status: status
         )
-        if setting == .automatic, readings.count > 0, bestFrameCluster?.count == readings.count {
-            let equallyStable = setting.candidateFrameRates.filter { candidateFPS in
-                guard candidateFPS != fps else {
-                    return false
-                }
-                let candidateReadings = samples.compactMap { sample in
-                    OCRFieldParser.timecode(from: sample.rawText, fps: candidateFPS)
-                }
-                return candidateReadings.count == readings.count
-            }
-            if !equallyStable.isEmpty {
-                notes.append("自动帧率可能存在并列结果，已按默认优先级选择 \(fps)")
-            }
-        }
 
         let diagnostics = TimecodeDiagnostics(
             setting: setting,

@@ -235,6 +235,7 @@ struct ProjectOutputSettings: Codable, Equatable, Sendable {
     var timecodeBurnOutputMode: TimecodeBurnOutputMode
     var isFileRenameEnabled: Bool
     var exportsCompanionCSVForRenamedFiles: Bool
+    var showsTimecodeDiagnosticsDetails: Bool
     var renamePrefix: String
     var renameSuffix: String
 
@@ -243,6 +244,7 @@ struct ProjectOutputSettings: Codable, Equatable, Sendable {
         timecodeBurnOutputMode: TimecodeBurnOutputMode = .sourceFile,
         isFileRenameEnabled: Bool = false,
         exportsCompanionCSVForRenamedFiles: Bool = false,
+        showsTimecodeDiagnosticsDetails: Bool = false,
         renamePrefix: String = "",
         renameSuffix: String = ""
     ) {
@@ -250,6 +252,7 @@ struct ProjectOutputSettings: Codable, Equatable, Sendable {
         self.timecodeBurnOutputMode = timecodeBurnOutputMode
         self.isFileRenameEnabled = isFileRenameEnabled
         self.exportsCompanionCSVForRenamedFiles = exportsCompanionCSVForRenamedFiles
+        self.showsTimecodeDiagnosticsDetails = showsTimecodeDiagnosticsDetails
         self.renamePrefix = renamePrefix
         self.renameSuffix = renameSuffix
     }
@@ -259,6 +262,7 @@ struct ProjectOutputSettings: Codable, Equatable, Sendable {
         case timecodeBurnOutputMode
         case isFileRenameEnabled
         case exportsCompanionCSVForRenamedFiles
+        case showsTimecodeDiagnosticsDetails
         case renamePrefix
         case renameSuffix
     }
@@ -269,6 +273,7 @@ struct ProjectOutputSettings: Codable, Equatable, Sendable {
         timecodeBurnOutputMode = try container.decodeIfPresent(TimecodeBurnOutputMode.self, forKey: .timecodeBurnOutputMode) ?? .sourceFile
         isFileRenameEnabled = try container.decodeIfPresent(Bool.self, forKey: .isFileRenameEnabled) ?? false
         exportsCompanionCSVForRenamedFiles = try container.decodeIfPresent(Bool.self, forKey: .exportsCompanionCSVForRenamedFiles) ?? false
+        showsTimecodeDiagnosticsDetails = try container.decodeIfPresent(Bool.self, forKey: .showsTimecodeDiagnosticsDetails) ?? false
         renamePrefix = try container.decodeIfPresent(String.self, forKey: .renamePrefix) ?? ""
         renameSuffix = try container.decodeIfPresent(String.self, forKey: .renameSuffix) ?? ""
     }
