@@ -398,7 +398,7 @@ private func drawText(size: CGFloat, labelRect: NSRect, blue: NSColor) {
         .kern: size * 0.002
     ]
     ("Beta\nRelease" as NSString).draw(
-        in: NSRect(x: size * 0.56, y: labelRect.maxY + size * 0.062, width: size * 0.38, height: size * 0.23),
+        in: NSRect(x: size * 0.56, y: labelRect.maxY + size * 0.010, width: size * 0.38, height: size * 0.23),
         withAttributes: betaAttributes
     )
 
@@ -406,12 +406,12 @@ private func drawText(size: CGFloat, labelRect: NSRect, blue: NSColor) {
     nameParagraph.alignment = .left
     nameParagraph.lineBreakMode = .byClipping
 
-    var nameSize = size * 0.178
+    var nameSize = size * 0.164
     var attributes: [NSAttributedString.Key: Any] = [:]
     var measured = NSSize(width: 0, height: 0)
     while nameSize > size * 0.09 {
         attributes = [
-            .font: font(named: "AvenirNextCondensed-Heavy", size: nameSize, fallbackWeight: .heavy),
+            .font: font(named: "Herculanum", size: nameSize, fallbackWeight: .regular),
             .foregroundColor: NSColor.white,
             .paragraphStyle: nameParagraph,
             .kern: size * 0.006
