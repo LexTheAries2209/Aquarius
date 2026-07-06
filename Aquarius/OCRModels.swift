@@ -109,13 +109,41 @@ struct Timecode: Equatable, Comparable, CustomStringConvertible, Sendable {
     let seconds: Int
     let frames: Int
     let fps: Int
+    let playbackFrameRate: Double
+    let isDropFrame: Bool
+
+    nonisolated init(
+        hours: Int,
+        minutes: Int,
+        seconds: Int,
+        frames: Int,
+        fps: Int,
+        playbackFrameRate: Double? = nil,
+        isDropFrame: Bool = false
+    ) {
+        self.hours = hours
+        self.minutes = minutes
+        self.seconds = seconds
+        self.frames = frames
+        self.fps = fps
+        self.playbackFrameRate = playbackFrameRate ?? Double(fps)
+        self.isDropFrame = isDropFrame
+    }
 
     nonisolated var totalFrames: Int {
-        (((hours * 60 + minutes) * 60 + seconds) * fps) + frames
+        if isDropFrame, fps == 30 {
+            let totalMinutes = hours * 60 + minutes
+            let nominalFrames = (((hours * 60 + minutes) * 60 + seconds) * fps) + frames
+            let droppedFrames = 2 * (totalMinutes - totalMinutes / 10)
+            return nominalFrames - droppedFrames
+        }
+
+        return (((hours * 60 + minutes) * 60 + seconds) * fps) + frames
     }
 
     nonisolated var description: String {
-        String(format: "%02d:%02d:%02d:%02d", hours, minutes, seconds, frames)
+        let separator = isDropFrame ? ";" : ":"
+        return String(format: "%02d:%02d:%02d%@%02d", hours, minutes, seconds, separator, frames)
     }
 
     nonisolated static func == (lhs: Timecode, rhs: Timecode) -> Bool {
@@ -124,13 +152,28 @@ struct Timecode: Equatable, Comparable, CustomStringConvertible, Sendable {
             && lhs.seconds == rhs.seconds
             && lhs.frames == rhs.frames
             && lhs.fps == rhs.fps
+            && abs(lhs.playbackFrameRate - rhs.playbackFrameRate) < 0.0001
+            && lhs.isDropFrame == rhs.isDropFrame
     }
 
     nonisolated static func < (lhs: Timecode, rhs: Timecode) -> Bool {
         lhs.totalFrames < rhs.totalFrames
     }
 
-    nonisolated static func from(totalFrames rawFrames: Int, fps: Int) -> Timecode {
+    nonisolated static func from(
+        totalFrames rawFrames: Int,
+        fps: Int,
+        playbackFrameRate: Double? = nil,
+        isDropFrame: Bool = false
+    ) -> Timecode {
+        if isDropFrame, fps == 30 {
+            return dropFrameTimecode(
+                from: rawFrames,
+                fps: fps,
+                playbackFrameRate: playbackFrameRate ?? SourceTimecodeFrameRateSetting.fps2997DF.playbackFrameRate
+            )
+        }
+
         let framesPerDay = fps * 60 * 60 * 24
         let totalFrames = ((rawFrames % framesPerDay) + framesPerDay) % framesPerDay
         let totalSeconds = totalFrames / fps
@@ -138,17 +181,33 @@ struct Timecode: Equatable, Comparable, CustomStringConvertible, Sendable {
         let seconds = totalSeconds % 60
         let minutes = (totalSeconds / 60) % 60
         let hours = (totalSeconds / 3600) % 24
-        return Timecode(hours: hours, minutes: minutes, seconds: seconds, frames: frames, fps: fps)
+        return Timecode(
+            hours: hours,
+            minutes: minutes,
+            seconds: seconds,
+            frames: frames,
+            fps: fps,
+            playbackFrameRate: playbackFrameRate,
+            isDropFrame: false
+        )
     }
 
-    nonisolated static func parse(_ value: String, fps: Int) -> Timecode? {
+    nonisolated static func parse(
+        _ value: String,
+        fps: Int,
+        playbackFrameRate: Double? = nil,
+        isDropFrame: Bool = false
+    ) -> Timecode? {
         guard fps > 0 else {
             return nil
         }
 
-        let normalized = value
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-            .replacingOccurrences(of: ";", with: ":")
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !isDropFrame || trimmed.contains(";") else {
+            return nil
+        }
+
+        let normalized = trimmed.replacingOccurrences(of: ";", with: ":")
         let parts = normalized
             .split(separator: ":", omittingEmptySubsequences: false)
             .map { String($0).trimmingCharacters(in: .whitespacesAndNewlines) }
@@ -162,14 +221,74 @@ struct Timecode: Equatable, Comparable, CustomStringConvertible, Sendable {
             return nil
         }
 
-        return Timecode(hours: parts[0], minutes: parts[1], seconds: parts[2], frames: parts[3], fps: fps)
+        if isDropFrame {
+            guard fps == 30, isValidDropFrameLabel(minutes: parts[1], seconds: parts[2], frames: parts[3]) else {
+                return nil
+            }
+        }
+
+        return Timecode(
+            hours: parts[0],
+            minutes: parts[1],
+            seconds: parts[2],
+            frames: parts[3],
+            fps: fps,
+            playbackFrameRate: playbackFrameRate,
+            isDropFrame: isDropFrame
+        )
+    }
+
+    nonisolated private static func dropFrameTimecode(
+        from rawFrames: Int,
+        fps: Int,
+        playbackFrameRate: Double
+    ) -> Timecode {
+        let dropFrames = 2
+        let framesPerHour = 107_892
+        let framesPer24Hours = framesPerHour * 24
+        let framesPer10Minutes = 17_982
+        let framesPerMinute = 1_798
+        var totalFrames = rawFrames % framesPer24Hours
+        if totalFrames < 0 {
+            totalFrames += framesPer24Hours
+        }
+
+        let tenMinuteChunks = totalFrames / framesPer10Minutes
+        let remainingFrames = totalFrames % framesPer10Minutes
+        let additionalDroppedFrames = max(0, (remainingFrames - dropFrames) / framesPerMinute)
+        let nominalFrameNumber = totalFrames + dropFrames * (9 * tenMinuteChunks + additionalDroppedFrames)
+        let totalSeconds = nominalFrameNumber / fps
+        let frames = nominalFrameNumber % fps
+        let seconds = totalSeconds % 60
+        let minutes = (totalSeconds / 60) % 60
+        let hours = (totalSeconds / 3600) % 24
+
+        return Timecode(
+            hours: hours,
+            minutes: minutes,
+            seconds: seconds,
+            frames: frames,
+            fps: fps,
+            playbackFrameRate: playbackFrameRate,
+            isDropFrame: true
+        )
+    }
+
+    nonisolated private static func isValidDropFrameLabel(minutes: Int, seconds: Int, frames: Int) -> Bool {
+        if minutes % 10 == 0 {
+            return true
+        }
+        return !(seconds == 0 && frames < 2)
     }
 }
 
 enum SourceTimecodeFrameRateSetting: String, CaseIterable, Codable, Hashable, Identifiable, Sendable {
     case automatic
+    case fps23976
     case fps24
     case fps25
+    case fps2997NDF
+    case fps2997DF
     case fps30
 
     var id: String { rawValue }
@@ -178,10 +297,16 @@ enum SourceTimecodeFrameRateSetting: String, CaseIterable, Codable, Hashable, Id
         switch self {
         case .automatic:
             "自动"
+        case .fps23976:
+            "23.976"
         case .fps24:
             "24"
         case .fps25:
             "25"
+        case .fps2997NDF:
+            "29.97 NDF"
+        case .fps2997DF:
+            "29.97 DF"
         case .fps30:
             "30"
         }
@@ -191,13 +316,32 @@ enum SourceTimecodeFrameRateSetting: String, CaseIterable, Codable, Hashable, Id
         switch self {
         case .automatic:
             nil
+        case .fps23976:
+            24
         case .fps24:
             24
         case .fps25:
             25
+        case .fps2997NDF, .fps2997DF:
+            30
         case .fps30:
             30
         }
+    }
+
+    nonisolated var playbackFrameRate: Double {
+        switch self {
+        case .fps23976:
+            24_000.0 / 1_001.0
+        case .fps2997NDF, .fps2997DF:
+            30_000.0 / 1_001.0
+        case .automatic, .fps24, .fps25, .fps30:
+            Double(fps ?? 24)
+        }
+    }
+
+    nonisolated var isDropFrame: Bool {
+        self == .fps2997DF
     }
 
     nonisolated var candidateFrameRates: [Int] {
@@ -344,7 +488,7 @@ struct TimecodeDiagnostics: Sendable {
         if setting == .automatic {
             return "自动推断 \(sourceTimecodeFrameRate)"
         }
-        return "\(sourceTimecodeFrameRate)"
+        return setting.title
     }
 
     nonisolated var driftDisplay: String {
@@ -758,14 +902,26 @@ struct DaVinciMetadataCSVExporter {
 
         if let startTimecode = metadata.startTimecode {
             if let duration = metadata.duration {
-                let frameCount = frameCount(duration: duration, fps: startTimecode.fps)
+                let frameCount = frameCount(duration: duration, playbackFrameRate: startTimecode.playbackFrameRate)
                 let endFrame = max(frameCount - 1, 0)
                 let endTimecode = Timecode.from(
                     totalFrames: startTimecode.totalFrames + endFrame,
-                    fps: startTimecode.fps
+                    fps: startTimecode.fps,
+                    playbackFrameRate: startTimecode.playbackFrameRate,
+                    isDropFrame: startTimecode.isDropFrame
                 )
 
-                fields.append(("Duration TC", Timecode.from(totalFrames: frameCount, fps: startTimecode.fps).description))
+                fields.append(
+                    (
+                        "Duration TC",
+                        Timecode.from(
+                            totalFrames: frameCount,
+                            fps: startTimecode.fps,
+                            playbackFrameRate: startTimecode.playbackFrameRate,
+                            isDropFrame: startTimecode.isDropFrame
+                        ).description
+                    )
+                )
                 fields.append(("End TC", endTimecode.description))
                 fields.append(("End Frame", "\(endFrame)"))
                 fields.append(("Frames", "\(frameCount)"))
@@ -798,12 +954,12 @@ struct DaVinciMetadataCSVExporter {
         )
     }
 
-    nonisolated private static func frameCount(duration: Double, fps: Int) -> Int {
-        guard duration.isFinite, fps > 0 else {
+    nonisolated private static func frameCount(duration: Double, playbackFrameRate: Double) -> Int {
+        guard duration.isFinite, playbackFrameRate > 0 else {
             return 1
         }
 
-        return max(1, Int((duration * Double(fps)).rounded()))
+        return max(1, Int((duration * playbackFrameRate).rounded()))
     }
 
     nonisolated private static func trimmed(_ value: String?) -> String? {

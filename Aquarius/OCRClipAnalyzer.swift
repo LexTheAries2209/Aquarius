@@ -257,7 +257,12 @@ struct OCRClipAnalyzer {
                     return OCRFieldParser.roll(from: sample.rawText) == nil
                 case .timecode:
                     return !sourceTimecodeFrameRateSetting.candidateFrameRates.contains { fps in
-                        OCRFieldParser.timecode(from: sample.rawText, fps: fps) != nil
+                        OCRFieldParser.timecode(
+                            from: sample.rawText,
+                            fps: fps,
+                            playbackFrameRate: sourceTimecodeFrameRateSetting == .automatic ? Double(fps) : sourceTimecodeFrameRateSetting.playbackFrameRate,
+                            isDropFrame: sourceTimecodeFrameRateSetting != .automatic && sourceTimecodeFrameRateSetting.isDropFrame
+                        ) != nil
                     }
                 }
             }
@@ -423,7 +428,14 @@ private enum OCRConsensusResolver {
             ?? sourceTimecodeFrameRateSetting.fps
             ?? max(1, Int(round(videoFrameRate)))
         let startTimecode = timecodeAnalysis.flatMap { analysis in
-            analysis.bestStartFrame.map { Timecode.from(totalFrames: $0, fps: analysis.sourceFrameRate) }
+            analysis.bestStartFrame.map {
+                Timecode.from(
+                    totalFrames: $0,
+                    fps: analysis.sourceFrameRate,
+                    playbackFrameRate: analysis.playbackFrameRate,
+                    isDropFrame: analysis.isDropFrame
+                )
+            }
         }
 
         var notes: [String] = []
@@ -490,6 +502,8 @@ private enum OCRConsensusResolver {
 
     private struct TimecodeAnalysis {
         let sourceFrameRate: Int
+        let playbackFrameRate: Double
+        let isDropFrame: Bool
         let validSampleCount: Int
         let invalidSampleCount: Int
         let clusteredSampleCount: Int
@@ -528,6 +542,8 @@ private enum OCRConsensusResolver {
             )
             return TimecodeAnalysis(
                 sourceFrameRate: setting.fps ?? max(1, Int(round(videoFrameRate))),
+                playbackFrameRate: setting == .automatic ? max(1.0, videoFrameRate.rounded()) : setting.playbackFrameRate,
+                isDropFrame: setting != .automatic && setting.isDropFrame,
                 validSampleCount: 0,
                 invalidSampleCount: samples.count,
                 clusteredSampleCount: 0,
@@ -547,14 +563,21 @@ private enum OCRConsensusResolver {
         videoFrameRate: Double,
         setting: SourceTimecodeFrameRateSetting
     ) -> TimecodeAnalysis {
+        let playbackFrameRate = setting == .automatic ? Double(fps) : setting.playbackFrameRate
+        let isDropFrame = setting != .automatic && setting.isDropFrame
         let nonEmptyTimecodeSampleCount = samples
             .filter { !$0.rawText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
             .count
         let readings: [TimecodeReading] = samples.compactMap { sample in
-            guard let timecode = OCRFieldParser.timecode(from: sample.rawText, fps: fps) else {
+            guard let timecode = OCRFieldParser.timecode(
+                from: sample.rawText,
+                fps: fps,
+                playbackFrameRate: playbackFrameRate,
+                isDropFrame: isDropFrame
+            ) else {
                 return nil
             }
-            let startFrame = timecode.totalFrames - Int(round(sample.actualSeconds * Double(fps)))
+            let startFrame = timecode.totalFrames - Int(round(sample.actualSeconds * playbackFrameRate))
             return TimecodeReading(sample: sample, timecode: timecode, startFrame: startFrame)
         }
         let invalidCount = max(0, nonEmptyTimecodeSampleCount - readings.count)
@@ -599,6 +622,8 @@ private enum OCRConsensusResolver {
 
         return TimecodeAnalysis(
             sourceFrameRate: fps,
+            playbackFrameRate: playbackFrameRate,
+            isDropFrame: isDropFrame,
             validSampleCount: readings.count,
             invalidSampleCount: invalidCount,
             clusteredSampleCount: bestFrameCluster?.count ?? 0,
@@ -904,7 +929,12 @@ private enum OCRFieldParser {
         return nil
     }
 
-    nonisolated static func timecode(from rawText: String, fps: Int) -> Timecode? {
+    nonisolated static func timecode(
+        from rawText: String,
+        fps: Int,
+        playbackFrameRate: Double? = nil,
+        isDropFrame: Bool = false
+    ) -> Timecode? {
         let normalized = rawText
             .uppercased()
             .replacingOccurrences(of: "O", with: "0")
@@ -919,25 +949,12 @@ private enum OCRFieldParser {
             return nil
         }
 
-        let parts = match
-            .replacingOccurrences(of: ";", with: ":")
-            .split(separator: ":")
-            .compactMap { Int($0.trimmingCharacters(in: .whitespaces)) }
-
-        guard parts.count == 4 else {
-            return nil
-        }
-
-        guard (0...23).contains(parts[0]) else {
-            return nil
-        }
-
-        let frame = parts[3]
-        guard (0..<fps).contains(frame) else {
-            return nil
-        }
-
-        return Timecode(hours: parts[0], minutes: parts[1], seconds: parts[2], frames: frame, fps: fps)
+        return Timecode.parse(
+            match,
+            fps: fps,
+            playbackFrameRate: playbackFrameRate,
+            isDropFrame: isDropFrame
+        )
     }
 
     nonisolated private static func normalizedRollToken(_ token: String) -> String? {

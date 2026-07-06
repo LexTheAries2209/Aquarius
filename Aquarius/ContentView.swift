@@ -730,7 +730,7 @@ struct ContentView: View {
                         )
                     )
 
-                    Text("起始 TC 按 \(viewModel.selectedManualTimecodeFrameRate) fps 解析；CSV 匹配仍使用媒体原始文件名。")
+                    Text("起始 TC 按 \(viewModel.selectedManualTimecodeFrameRate) 解析；CSV 匹配仍使用媒体原始文件名。")
                         .font(.caption2)
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
@@ -813,7 +813,7 @@ struct ContentView: View {
                     Text(setting.title).tag(setting)
                 }
             }
-            .pickerStyle(.segmented)
+            .pickerStyle(.menu)
 
             Text("应用于整个列表；修改后已有结果需重新提取。")
                 .font(.caption2)
@@ -879,7 +879,7 @@ struct ContentView: View {
                     .foregroundStyle(.secondary)
             }
 
-            Text("23.976 当前按 24 帧号制处理；29.97 drop-frame 留待后续支持。")
+            Text("自动仅推断 24/25/30；23.976 和 29.97 需手动指定。29.97 DF 请使用分号时间码。")
                 .font(.caption2)
                 .foregroundStyle(.secondary)
         }

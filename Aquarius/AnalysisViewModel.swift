@@ -226,7 +226,9 @@ final class AnalysisViewModel: ObservableObject {
 
         return Timecode.from(
             totalFrames: startTimecode.totalFrames + currentFrameOffset,
-            fps: startTimecode.fps
+            fps: startTimecode.fps,
+            playbackFrameRate: startTimecode.playbackFrameRate,
+            isDropFrame: startTimecode.isDropFrame
         ).description
     }
 
@@ -312,11 +314,11 @@ final class AnalysisViewModel: ObservableObject {
         selectedMediaItem?.manualMetadata.hasAnyOverride ?? false
     }
 
-    var selectedManualTimecodeFrameRate: Int {
+    var selectedManualTimecodeFrameRate: String {
         guard let item = selectedMediaItem else {
-            return sourceTimecodeFrameRateSetting.fps ?? 24
+            return sourceTimecodeFrameRateSetting.title
         }
-        return timecodeFrameRateForManualEntry(item)
+        return timecodeFrameRateDisplayForManualEntry(item)
     }
 
     var selectedManualStartTimecodeError: String? {
@@ -326,8 +328,16 @@ final class AnalysisViewModel: ObservableObject {
         }
 
         let fps = timecodeFrameRateForManualEntry(item)
-        guard Timecode.parse(value, fps: fps) != nil else {
-            return "起始时间码需为 HH:MM:SS:FF，且帧号小于 \(fps)"
+        let isDropFrame = timecodeIsDropFrameForManualEntry(item)
+        guard Timecode.parse(
+            value,
+            fps: fps,
+            playbackFrameRate: timecodePlaybackFrameRateForManualEntry(item),
+            isDropFrame: isDropFrame
+        ) != nil else {
+            let separator = isDropFrame ? ";" : ":"
+            let dropFrameHint = isDropFrame ? "；DF 非 10 分钟整分不能使用 ;00 或 ;01" : ""
+            return "起始时间码需为 HH:MM:SS\(separator)FF，且帧号小于 \(fps)\(dropFrameHint)"
         }
         return nil
     }
@@ -1420,8 +1430,8 @@ final class AnalysisViewModel: ObservableObject {
     }
 
     private var currentFrameOffset: Int {
-        let fps = selectedMediaItem.map(timecodeFrameRateForManualEntry) ?? 24
-        return max(0, Int(floor(currentPlaybackSeconds * Double(fps))))
+        let playbackFrameRate = selectedMediaItem.map(timecodePlaybackFrameRateForManualEntry) ?? 24
+        return max(0, Int(floor(currentPlaybackSeconds * playbackFrameRate)))
     }
 
     private func copyFiles(jobs: [FileOutputJob], destinationFolder: URL, operationTitle: String) async {
@@ -1740,7 +1750,12 @@ final class AnalysisViewModel: ObservableObject {
             return nil
         }
 
-        return Timecode.parse(value, fps: timecodeFrameRateForManualEntry(item))
+        return Timecode.parse(
+            value,
+            fps: timecodeFrameRateForManualEntry(item),
+            playbackFrameRate: timecodePlaybackFrameRateForManualEntry(item),
+            isDropFrame: timecodeIsDropFrameForManualEntry(item)
+        )
     }
 
     private func timecodeFrameRateForManualEntry(_ item: MediaQueueItem) -> Int {
@@ -1761,6 +1776,58 @@ final class AnalysisViewModel: ObservableObject {
         }
 
         return 24
+    }
+
+    private func timecodePlaybackFrameRateForManualEntry(_ item: MediaQueueItem) -> Double {
+        if sourceTimecodeFrameRateSetting != .automatic {
+            return sourceTimecodeFrameRateSetting.playbackFrameRate
+        }
+
+        if let result = item.result, !isAnalysisStale(item) {
+            return result.startTimecode?.playbackFrameRate ?? Double(result.fps)
+        }
+
+        if let metadataFPS = item.sourceTimecodeMetadata?.roundedFrameRate {
+            return Double(metadataFPS)
+        }
+
+        if let result = item.result {
+            return result.startTimecode?.playbackFrameRate ?? Double(result.fps)
+        }
+
+        return 24
+    }
+
+    private func timecodeIsDropFrameForManualEntry(_ item: MediaQueueItem) -> Bool {
+        if sourceTimecodeFrameRateSetting != .automatic {
+            return sourceTimecodeFrameRateSetting.isDropFrame
+        }
+
+        if let result = item.result, !isAnalysisStale(item) {
+            return result.startTimecode?.isDropFrame ?? false
+        }
+
+        return false
+    }
+
+    private func timecodeFrameRateDisplayForManualEntry(_ item: MediaQueueItem) -> String {
+        if sourceTimecodeFrameRateSetting != .automatic {
+            return sourceTimecodeFrameRateSetting.title
+        }
+
+        if let result = item.result, !isAnalysisStale(item) {
+            return result.timecodeDiagnostics?.sourceFrameRateDisplay ?? "\(result.fps)"
+        }
+
+        if let metadataFPS = item.sourceTimecodeMetadata?.roundedFrameRate {
+            return "\(metadataFPS)"
+        }
+
+        if let result = item.result {
+            return result.timecodeDiagnostics?.sourceFrameRateDisplay ?? "\(result.fps)"
+        }
+
+        return "24"
     }
 
     private func runAnalysis(for id: MediaQueueItem.ID, regions: [OCRRegion], progressPrefix: String?) async {
