@@ -82,12 +82,24 @@ struct ContentView: View {
             .buttonStyle(.borderedProminent)
             .disabled(viewModel.mediaItems.isEmpty || viewModel.isAnalyzing || !viewModel.hasEnabledFields)
 
-            Button {
-                viewModel.exportDaVinciMetadataCSV()
+            Menu {
+                Button {
+                    viewModel.exportDaVinciMetadataCSV()
+                } label: {
+                    Label("DaVinci Resolve CSV", systemImage: "tablecells")
+                }
+                .disabled(!viewModel.canExportDaVinciMetadata || viewModel.isAnalyzing)
+
+                Button {
+                    viewModel.exportPremiereProMetadataXML()
+                } label: {
+                    Label("Adobe Premiere Pro XML", systemImage: "doc.richtext")
+                }
+                .disabled(!viewModel.canExportPremiereProMetadata || viewModel.isAnalyzing)
             } label: {
-                Label("导出 CSV", systemImage: "tablecells")
+                Label("导出元数据", systemImage: "square.and.arrow.up")
             }
-            .disabled(!viewModel.canExportDaVinciMetadata || viewModel.isAnalyzing)
+            .disabled(!viewModel.canExportMetadata || viewModel.isAnalyzing)
 
             if viewModel.shouldShowTimecodeBurnButton {
                 Button {
@@ -730,7 +742,7 @@ struct ContentView: View {
                         )
                     )
 
-                    Text("起始 TC 按 \(viewModel.selectedManualTimecodeFrameRate) 解析；CSV 匹配仍使用媒体原始文件名。")
+                    Text("起始 TC 按 \(viewModel.selectedManualTimecodeFrameRate) 解析；导出元数据默认使用媒体原始文件名匹配。")
                         .font(.caption2)
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
@@ -1150,7 +1162,7 @@ private struct ProjectSettingsView: View {
                     settingsSection(title: "文件名改名") {
                         Toggle("启用复制改名按钮", isOn: $viewModel.isFileRenameOptionEnabled)
 
-                        Toggle("复制改名后自动生成配套 DaVinci CSV", isOn: $viewModel.exportsCompanionCSVForRenamedFiles)
+                        Toggle("复制改名后自动生成配套元数据 CSV", isOn: $viewModel.exportsCompanionCSVForRenamedFiles)
                             .disabled(!viewModel.isFileRenameOptionEnabled)
 
                         HStack(spacing: 10) {
@@ -1161,7 +1173,7 @@ private struct ProjectSettingsView: View {
                         }
                         .disabled(!viewModel.isFileRenameOptionEnabled)
 
-                        Text("改名会复制到新文件夹，不修改源文件；文件名来自识别结果或手动输入，同名会自动附加 -1、-2。配套 CSV 会使用改名后的真实文件名作为 Resolve 匹配键。")
+                        Text("改名会复制到新文件夹，不修改源文件；文件名来自识别结果或手动输入，同名会自动附加 -1、-2。配套元数据 CSV 会使用改名后的真实文件名作为目标软件匹配键。")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                             .fixedSize(horizontal: false, vertical: true)

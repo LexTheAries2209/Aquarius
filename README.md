@@ -30,7 +30,7 @@ V1.0.2 的中文发布说明见 [docs/releases/v1.0.2.zh-CN.md](docs/releases/v1
 
 - QTake 录制文件只有画面烧录信息，缺少可用的 QuickTime timecode track。
 - DaVinci Resolve 里需要批量补充 Reel、Camera、Start TC。
-- 需要先 OCR、人工复核，再导出 CSV 或生成改名后的交付文件。
+- 需要先 OCR、人工复核，再导出元数据或生成改名后的交付文件。
 - 需要把识别出的起始时间码写入 MOV / QuickTime 的 TMCD 轨道。
 
 ### 核心功能
@@ -44,10 +44,10 @@ V1.0.2 的中文发布说明见 [docs/releases/v1.0.2.zh-CN.md](docs/releases/v1
 - 检测视频帧率与源 TC 帧率不一致、疑似漂移、高风险时间码等情况；详细诊断可在项目设置里按需显示。
 - 读取现有文件元数据；如果系统安装了可选的 MediaInfo CLI（`mediainfo`），会显示更完整的容器、编码、帧率、时长和当前 timecode 信息。
 - 支持手动覆盖当前素材的文件名和起始 TC，也支持对当前列表批量覆盖卷号和机位号。
-- 导出 DaVinci Resolve 可导入的元数据 CSV。
+- 导出面向 DaVinci Resolve 或 Adobe Premiere Pro 的元数据。
 - 可选将起始时间码写入 QuickTime TMCD 轨道。
 - 可选复制到新文件夹并按识别或手动输入的文件名改名。
-- 可选在复制改名后自动生成一份配套 DaVinci CSV，使用改名后的真实文件名作为 Resolve 匹配键。
+- 可选在复制改名后自动生成一份配套元数据 CSV，使用改名后的真实文件名作为目标软件匹配键。
 
 ### 系统要求
 
@@ -79,7 +79,7 @@ V1.0.2 的中文发布说明见 [docs/releases/v1.0.2.zh-CN.md](docs/releases/v1
 6. 检查识别结果、置信度、漂移诊断和当前 TMCD 对比。
 7. 必要时在元数据编辑区手动修正文件名、卷号、机位号或起始 TC。
 8. 根据工作流选择：
-   - 导出 DaVinci CSV。
+   - 导出元数据。
    - 复制并改名。
    - 写入 TMCD。
    - 烧录时间码并改名到新文件夹。
@@ -102,7 +102,11 @@ V1.0.2 的中文发布说明见 [docs/releases/v1.0.2.zh-CN.md](docs/releases/v1
 - `End Frame`
 - `Frames`
 
-如果启用了“复制改名后自动生成配套 DaVinci CSV”，生成的配套 CSV 会使用输出文件夹里改名后的真实文件名作为 `File Name`，更适合直接导入 Resolve 匹配新文件。
+如果启用了“复制改名后自动生成配套元数据 CSV”，生成的配套 CSV 会使用输出文件夹里改名后的真实文件名作为 `File Name`，更适合直接导入 Resolve 匹配新文件。
+
+### Adobe Premiere Pro XML
+
+Premiere Pro 导出会生成 `xmeml version="4"` XML 文件，结构参考 SilverStack Lab 的 Adobe Premiere Pro XML：顶层 bin、`Video Clips` 子 bin、每个素材一条 master clip，并写入源文件 `pathurl`、起始 timecode frame、NDF/DF 标记和 reel/cameraroll。
 
 ### 时间码写入和改名
 
@@ -113,7 +117,7 @@ V1.0.2 的中文发布说明见 [docs/releases/v1.0.2.zh-CN.md](docs/releases/v1
 - “烧录到源文件”会直接修改列表内原始 MOV / QuickTime 文件的 TMCD sample。请先备份原始文件。
 - 直接写源文件只支持已有可写 TMCD 轨道的文件。
 - “复制到新文件夹并烧录”会保留源文件不变；如果源文件没有 TMCD 轨道，会尝试重新封装为带 TMCD 的 MOV。
-- 23.976、29.97 NDF 和 29.97 DF 目前可用于 OCR 解析、当前播放 TC 和 DaVinci CSV；QuickTime TMCD 写回暂时保护，不会直接写入非整数或 drop-frame TMCD，避免在 flags 未验证前生成错误源时间码。
+- 23.976、29.97 NDF 和 29.97 DF 目前可用于 OCR 解析、当前播放 TC 和元数据导出；QuickTime TMCD 写回暂时保护，不会直接写入非整数或 drop-frame TMCD，避免在 flags 未验证前生成错误源时间码。
 - 启用“复制改名按钮”后，可按识别或手动输入的文件名复制到新文件夹。
 - 改名支持统一前缀、后缀；同名文件会自动追加序号。
 - 同时启用时间码烧录和复制改名后，会出现“烧录并改名”按钮。
@@ -154,7 +158,7 @@ Common use cases:
 
 - QTake or monitor-recorded files show burned-in metadata but do not carry usable QuickTime timecode.
 - DaVinci Resolve needs batch Reel, Camera, and Start TC metadata.
-- A user wants OCR first, manual review second, then CSV export or renamed outputs.
+- A user wants OCR first, manual review second, then metadata export or renamed outputs.
 - A MOV / QuickTime file needs the recovered start timecode written into its TMCD track.
 
 ### Features
@@ -169,10 +173,10 @@ Common use cases:
 - Warn about frame-rate mismatch, suspected drift, high-risk readings, and mismatch against existing TMCD metadata; detailed diagnostics can be hidden or shown from Project Settings.
 - Read existing source metadata; with the optional MediaInfo CLI (`mediainfo`) installed, the app displays richer container, codec, frame-rate, duration, and timecode details.
 - Manually override clip name, start TC, reel number, and camera ID before export.
-- Export DaVinci Resolve metadata CSV.
+- Export metadata for DaVinci Resolve or Adobe Premiere Pro.
 - Optionally write recovered start TC into QuickTime TMCD metadata.
 - Optionally copy files into a new folder using recognized or manually entered clip names.
-- Optionally create a companion DaVinci CSV after renaming, using the renamed output files as the Resolve match keys.
+- Optionally create a companion metadata CSV after renaming, using the renamed output files as the target app match keys.
 
 ### Requirements
 
@@ -203,7 +207,7 @@ Common use cases:
 5. Analyze a single clip from the queue, or click “Analyze All”.
 6. Review confidence, notes, drift diagnostics, and the existing TMCD comparison.
 7. Correct metadata manually if needed.
-8. Export Resolve CSV, copy and rename files, write TMCD, or burn-and-rename into a new folder.
+8. Export metadata, copy and rename files, write TMCD, or burn-and-rename into a new folder.
 
 ### DaVinci Resolve CSV
 
@@ -225,6 +229,10 @@ Available fields:
 
 When companion CSV generation is enabled for renamed outputs, the CSV uses the actual renamed output files as `File Name` values, which is better for importing those new files into Resolve.
 
+### Adobe Premiere Pro XML
+
+Premiere Pro export generates an `xmeml version="4"` XML file following the structure used by SilverStack Lab's Adobe Premiere Pro XML: a top-level bin, a `Video Clips` sub-bin, one master clip per source file, and source `pathurl`, timecode frame, NDF/DF display format, and reel/cameraroll metadata.
+
 ### Timecode Writing And Renaming
 
 Open Project Settings from the gear button in the lower-right corner, or press `Command-P`.
@@ -234,7 +242,7 @@ Open Project Settings from the gear button in the lower-right corner, or press `
 - Source-file mode directly modifies the original MOV / QuickTime file. Back up originals first.
 - Source-file mode requires an existing writable TMCD track.
 - Copy-to-folder mode leaves source files unchanged and attempts to create MOV outputs with TMCD metadata when needed.
-- 23.976, 29.97 NDF, and 29.97 DF are currently supported for OCR parsing, current playback TC, and DaVinci CSV export. QuickTime TMCD writeback is intentionally blocked for non-integer and drop-frame rates until the required flags are validated.
+- 23.976, 29.97 NDF, and 29.97 DF are currently supported for OCR parsing, current playback TC, and metadata export. QuickTime TMCD writeback is intentionally blocked for non-integer and drop-frame rates until the required flags are validated.
 - Enable copy-and-rename to copy files into a new folder using recognized or manually entered clip names.
 - Prefixes and suffixes can be configured for renamed outputs.
 - When both timecode writing and renaming are enabled, the app exposes a combined burn-and-rename action.

@@ -985,10 +985,225 @@ struct DaVinciMetadataCSVExporter {
         var errorDescription: String? {
             switch self {
             case .noMetadata:
-                "没有可导出的达芬奇元数据字段"
+                "没有可导出的 DaVinci Resolve CSV 元数据字段"
             case .encodingFailed:
                 "CSV 文本编码失败"
             }
         }
+    }
+}
+
+struct PremiereProXMLRow {
+    let videoURL: URL
+    let metadata: ClipExportMetadata
+
+    nonisolated init(videoURL: URL, metadata: ClipExportMetadata) {
+        self.videoURL = videoURL
+        self.metadata = metadata
+    }
+}
+
+struct PremiereProXMLExporter {
+    nonisolated static func hasExportableMetadata(_ metadata: ClipExportMetadata) -> Bool {
+        metadata.startTimecode != nil
+            || trimmed(metadata.clipName) != nil
+            || trimmed(metadata.roll) != nil
+            || trimmed(metadata.cameraID) != nil
+    }
+
+    nonisolated static func makeData(rows: [PremiereProXMLRow]) throws -> Data {
+        let rows = rows.filter { hasExportableMetadata($0.metadata) }
+        guard !rows.isEmpty else {
+            throw ExportError.noMetadata
+        }
+
+        let binName = commonRollName(rows: rows) ?? "Aquarius_Metadata"
+        let clips = rows.enumerated().map { offset, row in
+            clipXML(row: row, index: offset)
+        }.joined(separator: "\n")
+
+        let xml = """
+        <?xml version="1.0" encoding="UTF-8"?>
+        <!DOCTYPE xmeml>
+        <xmeml version="4">
+          <bin>
+            <name>\(escapeText(binName))</name>
+            <bin>
+              <name>Video Clips</name>
+              <children>
+        \(clips)
+              </children>
+            </bin>
+          </bin>
+        </xmeml>
+        """
+
+        guard let data = xml.data(using: .utf8) else {
+            throw ExportError.encodingFailed
+        }
+        return data
+    }
+
+    nonisolated private static func clipXML(row: PremiereProXMLRow, index: Int) -> String {
+        let metadata = row.metadata
+        let clipName = trimmed(metadata.clipName)
+            ?? row.videoURL.deletingPathExtension().lastPathComponent
+        let rollName = trimmed(metadata.roll)
+        let cameraID = trimmed(metadata.cameraID)
+        let startTimecode = metadata.startTimecode
+        let durationFrames = frameCount(
+            duration: metadata.duration,
+            playbackFrameRate: startTimecode?.playbackFrameRate ?? Double(startTimecode?.fps ?? 25)
+        )
+        let rate = rateXML(for: startTimecode)
+        let displayFormat = startTimecode?.isDropFrame == true ? "DF" : "NDF"
+        let sourceFrame = startTimecode?.totalFrames ?? 0
+        let clipID = safeXMLID(stem: clipName, index: index)
+        let masterClipID = "MASTER_\(clipID)"
+        let fileID = "video_file_\(clipID)"
+        let reelXML = rollName.map { "\n                      <reel>\n                        <name>\(escapeText($0))</name>\n                      </reel>" } ?? ""
+        let cameraNote = cameraID.map { "Camera: \(escapeText($0))" } ?? ""
+        let filmDataXML = rollName.map {
+            """
+              <filmdata>
+                <cameraroll>\(escapeText($0))</cameraroll>
+                <filmslate>
+                  <take/>
+                  <scene/>
+                </filmslate>
+              </filmdata>
+            """
+        } ?? ""
+
+        return """
+                <clip id="\(escapeText(clipID))">
+                  <uuid>\(UUID().uuidString.uppercased())</uuid>
+                  <masterclipid>\(escapeText(masterClipID))</masterclipid>
+                  <ismasterclip>TRUE</ismasterclip>
+                  <duration>\(durationFrames)</duration>
+        \(rate.indented(by: 10))
+                  <name>\(escapeText(clipName))</name>
+                  <media>
+                    <video>
+                      <track>
+                        <clipitem id="\(escapeText(clipID))_ci">
+                          <masterclipid>\(escapeText(masterClipID))</masterclipid>
+                          <name>\(escapeText(clipName))</name>
+                          <file id="\(escapeText(fileID))">
+                            <name>\(escapeText(row.videoURL.lastPathComponent))</name>
+                            <pathurl>\(escapeText(row.videoURL.absoluteString))</pathurl>
+                            <duration>\(durationFrames)</duration>
+                            <timecode>
+                              <frame>\(sourceFrame)</frame>
+                              <displayformat>\(displayFormat)</displayformat>
+                              <source>source</source>\(reelXML)
+                            </timecode>
+                            <media>
+                              <video>
+                                <samplecharacteristics>
+                                  <pixelaspectratio>Square</pixelaspectratio>
+                                </samplecharacteristics>
+                              </video>
+                            </media>
+                          </file>
+                        </clipitem>
+                        <enabled>TRUE</enabled>
+                        <locked>FALSE</locked>
+                      </track>
+                    </video>
+                  </media>
+                  <logginginfo>
+                    <description/>
+                    <scene/>
+                    <shottake/>
+                    <lognote>\(cameraNote)</lognote>
+                    <good>FALSE</good>
+                  </logginginfo>
+        \(filmDataXML.indented(by: 10))
+                  <in>-1</in>
+                  <out>-1</out>
+                  <comments>
+                    <mastercomment1>Exported by Aquarius</mastercomment1>
+                    <mastercomment2/>
+                    <mastercomment3/>
+                    <mastercomment4/>
+                  </comments>
+                  <defaultangle/>
+                </clip>
+        """
+    }
+
+    nonisolated private static func rateXML(for timecode: Timecode?) -> String {
+        let fps = timecode?.fps ?? 25
+        let playbackFrameRate = timecode?.playbackFrameRate ?? Double(fps)
+        let isNTSC = abs(playbackFrameRate - Double(fps)) > 0.0001
+        return """
+        <rate>
+          <ntsc>\(isNTSC ? "TRUE" : "FALSE")</ntsc>
+          <timebase>\(fps)</timebase>
+        </rate>
+        """
+    }
+
+    nonisolated private static func commonRollName(rows: [PremiereProXMLRow]) -> String? {
+        let rollNames = Set(rows.compactMap { trimmed($0.metadata.roll) })
+        return rollNames.count == 1 ? rollNames.first : nil
+    }
+
+    nonisolated private static func frameCount(duration: Double?, playbackFrameRate: Double) -> Int {
+        guard let duration, duration.isFinite, playbackFrameRate > 0 else {
+            return 1
+        }
+
+        return max(1, Int((duration * playbackFrameRate).rounded()))
+    }
+
+    nonisolated private static func safeXMLID(stem: String, index: Int) -> String {
+        let allowed = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "_-"))
+        let sanitized = stem.unicodeScalars.map { scalar in
+            allowed.contains(scalar) ? String(scalar) : "_"
+        }.joined()
+        let base = sanitized.isEmpty ? "clip" : sanitized
+        return "\(base)_\(index + 1)"
+    }
+
+    nonisolated private static func trimmed(_ value: String?) -> String? {
+        guard let value = value?.trimmingCharacters(in: .whitespacesAndNewlines), !value.isEmpty else {
+            return nil
+        }
+
+        return value
+    }
+
+    nonisolated private static func escapeText(_ value: String) -> String {
+        value
+            .replacingOccurrences(of: "&", with: "&amp;")
+            .replacingOccurrences(of: "<", with: "&lt;")
+            .replacingOccurrences(of: ">", with: "&gt;")
+            .replacingOccurrences(of: "\"", with: "&quot;")
+            .replacingOccurrences(of: "'", with: "&apos;")
+    }
+
+    enum ExportError: LocalizedError {
+        case noMetadata
+        case encodingFailed
+
+        var errorDescription: String? {
+            switch self {
+            case .noMetadata:
+                "没有可导出的 Premiere Pro XML 元数据字段"
+            case .encodingFailed:
+                "Premiere Pro XML 文本编码失败"
+            }
+        }
+    }
+}
+
+private extension String {
+    func indented(by spaces: Int) -> String {
+        let prefix = String(repeating: " ", count: spaces)
+        return split(separator: "\n", omittingEmptySubsequences: false)
+            .map { $0.isEmpty ? "" : prefix + $0 }
+            .joined(separator: "\n")
     }
 }

@@ -240,6 +240,10 @@ final class AnalysisViewModel: ObservableObject {
         max(0, mediaItems.count - exportableItemCount)
     }
 
+    var skippedPremiereProMetadataItemCount: Int {
+        max(0, mediaItems.count - premiereProXMLRows.count)
+    }
+
     var hasAnalysisRecords: Bool {
         mediaItems.contains { item in
             item.result != nil || item.errorMessage != nil || item.analysisStatus != .pending
@@ -248,6 +252,14 @@ final class AnalysisViewModel: ObservableObject {
 
     var canExportDaVinciMetadata: Bool {
         exportableItemCount > 0
+    }
+
+    var canExportPremiereProMetadata: Bool {
+        !premiereProXMLRows.isEmpty
+    }
+
+    var canExportMetadata: Bool {
+        canExportDaVinciMetadata || canExportPremiereProMetadata
     }
 
     var shouldShowTimecodeBurnButton: Bool {
@@ -895,7 +907,7 @@ final class AnalysisViewModel: ObservableObject {
     func exportDaVinciMetadataCSV() {
         let rows = exportableRows
         guard !rows.isEmpty else {
-            errorMessage = "当前列表没有可导出的达芬奇元数据"
+            errorMessage = "当前列表没有可导出的元数据"
             statusMessage = "导出失败：没有可导出条目"
             return
         }
@@ -905,7 +917,7 @@ final class AnalysisViewModel: ObservableObject {
             csvData = try DaVinciMetadataCSVExporter.makeData(rows: rows)
         } catch {
             errorMessage = error.localizedDescription
-            statusMessage = "导出达芬奇 CSV 失败"
+            statusMessage = "导出 DaVinci Resolve CSV 失败"
             return
         }
 
@@ -923,10 +935,48 @@ final class AnalysisViewModel: ObservableObject {
             try csvData.write(to: destination, options: .atomic)
             errorMessage = nil
             let skippedText = skippedExportItemCount > 0 ? "，跳过 \(skippedExportItemCount) 个" : ""
-            statusMessage = "已导出 \(rows.count) 条达芬奇 CSV\(skippedText)：\(destination.lastPathComponent)"
+            statusMessage = "已导出 \(rows.count) 条 DaVinci Resolve CSV\(skippedText)：\(destination.lastPathComponent)"
         } catch {
             errorMessage = error.localizedDescription
-            statusMessage = "导出达芬奇 CSV 失败"
+            statusMessage = "导出 DaVinci Resolve CSV 失败"
+        }
+    }
+
+    func exportPremiereProMetadataXML() {
+        let rows = premiereProXMLRows
+        guard !rows.isEmpty else {
+            errorMessage = "当前列表没有可导出的 Premiere Pro XML 元数据"
+            statusMessage = "导出失败：没有可导出条目"
+            return
+        }
+
+        let xmlData: Data
+        do {
+            xmlData = try PremiereProXMLExporter.makeData(rows: rows)
+        } catch {
+            errorMessage = error.localizedDescription
+            statusMessage = "导出 Premiere Pro XML 失败"
+            return
+        }
+
+        let savePanel = NSSavePanel()
+        savePanel.allowedContentTypes = [.xml]
+        savePanel.canCreateDirectories = true
+        savePanel.isExtensionHidden = false
+        savePanel.nameFieldStringValue = "Aquarius_PremierePro_Metadata.xml"
+
+        guard savePanel.runModal() == .OK, let destination = savePanel.url else {
+            return
+        }
+
+        do {
+            try xmlData.write(to: destination, options: .atomic)
+            errorMessage = nil
+            let skippedText = skippedPremiereProMetadataItemCount > 0 ? "，跳过 \(skippedPremiereProMetadataItemCount) 个" : ""
+            statusMessage = "已导出 \(rows.count) 条 Premiere Pro XML\(skippedText)：\(destination.lastPathComponent)"
+        } catch {
+            errorMessage = error.localizedDescription
+            statusMessage = "导出 Premiere Pro XML 失败"
         }
     }
 
@@ -1323,6 +1373,16 @@ final class AnalysisViewModel: ObservableObject {
         }
     }
 
+    private var premiereProXMLRows: [PremiereProXMLRow] {
+        mediaItems.compactMap { item in
+            let metadata = exportMetadata(for: item)
+            guard PremiereProXMLExporter.hasExportableMetadata(metadata) else {
+                return nil
+            }
+            return PremiereProXMLRow(videoURL: item.url, metadata: metadata)
+        }
+    }
+
     private var timecodeBurnJobs: [TimecodeBurnJob] {
         mediaItems.compactMap { item in
             guard let startTimecode = exportMetadata(for: item).startTimecode else {
@@ -1610,7 +1670,7 @@ final class AnalysisViewModel: ObservableObject {
             return nil
         }
 
-        batchProgressMessage = "正在生成配套 DaVinci CSV..."
+        batchProgressMessage = "正在生成配套元数据 CSV..."
         do {
             let csvData = try DaVinciMetadataCSVExporter.makeData(rows: rows)
             var usedFileNames = Set(successfulJobs.map { $0.destinationURL.lastPathComponent.lowercased() })
@@ -1623,7 +1683,7 @@ final class AnalysisViewModel: ObservableObject {
             try csvData.write(to: csvURL, options: .atomic)
             return csvURL.lastPathComponent
         } catch {
-            failures.append(("配套 DaVinci CSV", error.localizedDescription))
+            failures.append(("配套元数据 CSV", error.localizedDescription))
             return nil
         }
     }
