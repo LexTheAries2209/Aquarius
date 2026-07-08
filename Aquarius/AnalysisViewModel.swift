@@ -244,6 +244,10 @@ final class AnalysisViewModel: ObservableObject {
         max(0, mediaItems.count - premiereProXMLRows.count)
     }
 
+    var skippedFinalCutMetadataItemCount: Int {
+        max(0, mediaItems.count - finalCutXMLRows.count)
+    }
+
     var hasAnalysisRecords: Bool {
         mediaItems.contains { item in
             item.result != nil || item.errorMessage != nil || item.analysisStatus != .pending
@@ -258,8 +262,14 @@ final class AnalysisViewModel: ObservableObject {
         !premiereProXMLRows.isEmpty
     }
 
+    var canExportFinalCutProMetadata: Bool {
+        !finalCutXMLRows.isEmpty
+    }
+
     var canExportMetadata: Bool {
-        canExportDaVinciMetadata || canExportPremiereProMetadata
+        canExportDaVinciMetadata
+            || canExportPremiereProMetadata
+            || canExportFinalCutProMetadata
     }
 
     var shouldShowTimecodeBurnButton: Bool {
@@ -980,6 +990,82 @@ final class AnalysisViewModel: ObservableObject {
         }
     }
 
+    func exportFinalCutPro7MetadataXML() {
+        let rows = finalCutXMLRows
+        guard !rows.isEmpty else {
+            errorMessage = "当前列表没有可导出的 Final Cut Pro 7 XML 元数据"
+            statusMessage = "导出失败：没有可导出条目"
+            return
+        }
+
+        let xmlData: Data
+        do {
+            xmlData = try FinalCutPro7XMLExporter.makeData(rows: rows)
+        } catch {
+            errorMessage = error.localizedDescription
+            statusMessage = "导出 Final Cut Pro 7 XML 失败"
+            return
+        }
+
+        let savePanel = NSSavePanel()
+        savePanel.allowedContentTypes = [.xml]
+        savePanel.canCreateDirectories = true
+        savePanel.isExtensionHidden = false
+        savePanel.nameFieldStringValue = "Aquarius_FinalCutPro7_Metadata.xml"
+
+        guard savePanel.runModal() == .OK, let destination = savePanel.url else {
+            return
+        }
+
+        do {
+            try xmlData.write(to: destination, options: .atomic)
+            errorMessage = nil
+            let skippedText = skippedFinalCutMetadataItemCount > 0 ? "，跳过 \(skippedFinalCutMetadataItemCount) 个" : ""
+            statusMessage = "已导出 \(rows.count) 条 Final Cut Pro 7 XML\(skippedText)：\(destination.lastPathComponent)"
+        } catch {
+            errorMessage = error.localizedDescription
+            statusMessage = "导出 Final Cut Pro 7 XML 失败"
+        }
+    }
+
+    func exportFinalCutProMetadataXML() {
+        let rows = finalCutXMLRows
+        guard !rows.isEmpty else {
+            errorMessage = "当前列表没有可导出的 Final Cut Pro XML 元数据"
+            statusMessage = "导出失败：没有可导出条目"
+            return
+        }
+
+        let xmlData: Data
+        do {
+            xmlData = try FinalCutProXMLExporter.makeData(rows: rows)
+        } catch {
+            errorMessage = error.localizedDescription
+            statusMessage = "导出 Final Cut Pro XML 失败"
+            return
+        }
+
+        let savePanel = NSSavePanel()
+        savePanel.allowedContentTypes = [.xml]
+        savePanel.canCreateDirectories = true
+        savePanel.isExtensionHidden = false
+        savePanel.nameFieldStringValue = "Aquarius_FinalCutPro_Metadata.fcpxml"
+
+        guard savePanel.runModal() == .OK, let destination = savePanel.url else {
+            return
+        }
+
+        do {
+            try xmlData.write(to: destination, options: .atomic)
+            errorMessage = nil
+            let skippedText = skippedFinalCutMetadataItemCount > 0 ? "，跳过 \(skippedFinalCutMetadataItemCount) 个" : ""
+            statusMessage = "已导出 \(rows.count) 条 Final Cut Pro XML\(skippedText)：\(destination.lastPathComponent)"
+        } catch {
+            errorMessage = error.localizedDescription
+            statusMessage = "导出 Final Cut Pro XML 失败"
+        }
+    }
+
     func runTimecodeBurnAction() {
         switch timecodeBurnOutputMode {
         case .sourceFile:
@@ -1380,6 +1466,16 @@ final class AnalysisViewModel: ObservableObject {
                 return nil
             }
             return PremiereProXMLRow(videoURL: item.url, metadata: metadata)
+        }
+    }
+
+    private var finalCutXMLRows: [FinalCutMetadataXMLRow] {
+        mediaItems.compactMap { item in
+            let metadata = exportMetadata(for: item)
+            guard FinalCutProXMLExporter.hasExportableMetadata(metadata) else {
+                return nil
+            }
+            return FinalCutMetadataXMLRow(videoURL: item.url, metadata: metadata)
         }
     }
 

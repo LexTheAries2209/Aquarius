@@ -1199,8 +1199,387 @@ struct PremiereProXMLExporter {
     }
 }
 
+struct FinalCutMetadataXMLRow {
+    let videoURL: URL
+    let metadata: ClipExportMetadata
+
+    nonisolated init(videoURL: URL, metadata: ClipExportMetadata) {
+        self.videoURL = videoURL
+        self.metadata = metadata
+    }
+}
+
+struct FinalCutPro7XMLExporter {
+    nonisolated static func hasExportableMetadata(_ metadata: ClipExportMetadata) -> Bool {
+        metadata.startTimecode != nil
+            || XMLExportSupport.trimmed(metadata.clipName) != nil
+            || XMLExportSupport.trimmed(metadata.roll) != nil
+            || XMLExportSupport.trimmed(metadata.cameraID) != nil
+    }
+
+    nonisolated static func makeData(rows: [FinalCutMetadataXMLRow]) throws -> Data {
+        let rows = rows.filter { hasExportableMetadata($0.metadata) }
+        guard !rows.isEmpty else {
+            throw ExportError.noMetadata
+        }
+
+        let binName = XMLExportSupport.commonRollName(rows: rows) ?? "Aquarius_Metadata"
+        let clips = rows.enumerated().map { index, row in
+            clipXML(row: row, index: index)
+        }.joined(separator: "\n")
+
+        let xml = """
+        <?xml version="1.0" encoding="UTF-8"?>
+        <!DOCTYPE xmeml>
+        <xmeml version="4">
+          <bin>
+            <uuid>\(UUID().uuidString.uppercased())</uuid>
+            <updatebehavior>add</updatebehavior>
+            <name>\(XMLExportSupport.escapeText(binName))</name>
+            <children>
+        \(clips)
+            </children>
+          </bin>
+        </xmeml>
+        """
+
+        guard let data = xml.data(using: .utf8) else {
+            throw ExportError.encodingFailed
+        }
+        return data
+    }
+
+    nonisolated private static func clipXML(row: FinalCutMetadataXMLRow, index: Int) -> String {
+        let metadata = row.metadata
+        let clipName = XMLExportSupport.trimmed(metadata.clipName)
+            ?? row.videoURL.deletingPathExtension().lastPathComponent
+        let rollName = XMLExportSupport.trimmed(metadata.roll)
+        let cameraID = XMLExportSupport.trimmed(metadata.cameraID)
+        let startTimecode = metadata.startTimecode
+        let durationFrames = XMLExportSupport.frameCount(
+            duration: metadata.duration,
+            playbackFrameRate: startTimecode?.playbackFrameRate ?? Double(startTimecode?.fps ?? 25)
+        )
+        let rate = XMLExportSupport.xmemlRateXML(for: startTimecode)
+        let timecodeRate = XMLExportSupport.xmemlRateXML(for: startTimecode).indented(by: 12)
+        let displayFormat = startTimecode?.isDropFrame == true ? "DF" : "NDF"
+        let sourceFrame = startTimecode?.totalFrames ?? 0
+        let clipID = XMLExportSupport.safeXMLID(stem: clipName, index: index)
+        let masterClipID = "MASTER_\(clipID)"
+        let fileID = "video_file_\(clipID)"
+        let reelXML = rollName.map {
+            """
+
+            <reel>
+              <name>\(XMLExportSupport.escapeText($0))</name>
+            </reel>
+            """
+        } ?? ""
+        let cameraComment = cameraID.map { "Camera:\(XMLExportSupport.escapeText($0))" } ?? ""
+
+        return """
+              <clip id="\(XMLExportSupport.escapeText(clipID))">
+                <uuid>\(UUID().uuidString.uppercased())</uuid>
+                <updatebehavior>add</updatebehavior>
+                <name>\(XMLExportSupport.escapeText(clipName))</name>
+                <duration>\(durationFrames)</duration>
+        \(rate.indented(by: 8))
+                <file id="\(XMLExportSupport.escapeText(fileID))">
+                  <name>\(XMLExportSupport.escapeText(row.videoURL.lastPathComponent))</name>
+                  <pathurl>\(XMLExportSupport.escapeText(row.videoURL.absoluteString))</pathurl>
+                  <timecode>
+                    <frame>\(sourceFrame)</frame>
+                    <displayformat>\(displayFormat)</displayformat>
+                    <source>source</source>\(reelXML)
+        \(timecodeRate)
+                  </timecode>
+                </file>
+                <media>
+                  <video>
+                    <track>
+                      <clipitem id="\(XMLExportSupport.escapeText(clipID))_ci"/>
+                      <enabled>TRUE</enabled>
+                      <locked>FALSE</locked>
+                    </track>
+                  </video>
+                </media>
+                <in>-1</in>
+                <out>-1</out>
+                <masterclipid>\(XMLExportSupport.escapeText(masterClipID))</masterclipid>
+                <ismasterclip>TRUE</ismasterclip>
+                <logginginfo>
+                  <description/>
+                  <scene/>
+                  <shottake/>
+                  <lognote/>
+                  <good>FALSE</good>
+                </logginginfo>
+                <comments>
+                  <mastercomment1>Exported by Aquarius</mastercomment1>
+                  <mastercomment2>\(cameraComment)</mastercomment2>
+                  <mastercomment3/>
+                  <clipcommenta/>
+                  <clipcommentb/>
+                </comments>
+                <labels>
+                  <label>No Label</label>
+                </labels>
+                <defaultangle/>
+              </clip>
+        """
+    }
+
+    enum ExportError: LocalizedError {
+        case noMetadata
+        case encodingFailed
+
+        var errorDescription: String? {
+            switch self {
+            case .noMetadata:
+                "没有可导出的 Final Cut Pro 7 XML 元数据字段"
+            case .encodingFailed:
+                "Final Cut Pro 7 XML 文本编码失败"
+            }
+        }
+    }
+}
+
+struct FinalCutProXMLExporter {
+    nonisolated static func hasExportableMetadata(_ metadata: ClipExportMetadata) -> Bool {
+        FinalCutPro7XMLExporter.hasExportableMetadata(metadata)
+    }
+
+    nonisolated static func makeData(rows: [FinalCutMetadataXMLRow]) throws -> Data {
+        let rows = rows.filter { hasExportableMetadata($0.metadata) }
+        guard !rows.isEmpty else {
+            throw ExportError.noMetadata
+        }
+
+        let eventName = XMLExportSupport.commonRollName(rows: rows) ?? "Aquarius_Metadata"
+        let formats = formatXML(rows: rows)
+        let assets = rows.enumerated().map { index, row in
+            assetXML(row: row, index: index)
+        }.joined(separator: "\n")
+        let eventClips = rows.enumerated().map { index, row in
+            assetClipXML(row: row, index: index, indentation: 6)
+        }.joined(separator: "\n")
+        let spineClips = rows.enumerated().map { index, row in
+            assetClipXML(row: row, index: index, indentation: 12)
+        }.joined(separator: "\n")
+        let firstRow = rows[0]
+        let firstTiming = timing(for: firstRow)
+
+        let xml = """
+        <?xml version="1.0" encoding="UTF-8"?>
+        <!DOCTYPE fcpxml>
+        <fcpxml version="1.9">
+          <resources>
+        \(formats.indented(by: 4))
+        \(assets)
+          </resources>
+          <library>
+            <event uid="\(UUID().uuidString.uppercased())" name="\(XMLExportSupport.escapeText(eventName))">
+        \(eventClips)
+              <project name="\(XMLExportSupport.escapeText(eventName))">
+                <sequence tcFormat="\(firstTiming.tcFormat)" audioLayout="stereo" duration="\(firstTiming.duration)" tcStart="\(firstTiming.start)" format="f1">
+                  <spine>
+        \(spineClips)
+                  </spine>
+                </sequence>
+              </project>
+            </event>
+          </library>
+        </fcpxml>
+        """
+
+        guard let data = xml.data(using: .utf8) else {
+            throw ExportError.encodingFailed
+        }
+        return data
+    }
+
+    nonisolated private static func formatXML(rows: [FinalCutMetadataXMLRow]) -> String {
+        let timing = timing(for: rows[0])
+        return """
+        <format id="f1" name="FFVideoFormatRateUndefined" frameDuration="\(timing.frameDuration)"/>
+        """
+    }
+
+    nonisolated private static func assetXML(row: FinalCutMetadataXMLRow, index: Int) -> String {
+        let metadata = row.metadata
+        let clipName = XMLExportSupport.trimmed(metadata.clipName)
+            ?? row.videoURL.deletingPathExtension().lastPathComponent
+        let timing = timing(for: row)
+        return """
+            <asset id="r\(index + 1)" name="\(XMLExportSupport.escapeText(clipName))" format="f1" hasVideo="1" duration="\(timing.duration)" start="\(timing.start)">
+              <media-rep kind="original-media" src="\(XMLExportSupport.escapeText(row.videoURL.absoluteString))"/>
+            </asset>
+        """
+    }
+
+    nonisolated private static func assetClipXML(
+        row: FinalCutMetadataXMLRow,
+        index: Int,
+        indentation: Int
+    ) -> String {
+        let metadata = row.metadata
+        let clipName = XMLExportSupport.trimmed(metadata.clipName)
+            ?? row.videoURL.deletingPathExtension().lastPathComponent
+        let rollName = XMLExportSupport.trimmed(metadata.roll)
+        let cameraID = XMLExportSupport.trimmed(metadata.cameraID)
+        let timing = timing(for: row)
+        let metadataXML = clipMetadataXML(rollName: rollName, cameraID: cameraID)
+
+        return """
+        <asset-clip ref="r\(index + 1)" format="f1" tcFormat="\(timing.tcFormat)" name="\(XMLExportSupport.escapeText(clipName))" start="\(timing.start)" duration="\(timing.duration)">
+          <note/>
+        \(metadataXML.indented(by: 2))
+        </asset-clip>
+        """.indented(by: indentation)
+    }
+
+    nonisolated private static func clipMetadataXML(rollName: String?, cameraID: String?) -> String {
+        var fields: [String] = []
+        if let rollName {
+            fields.append("<md key=\"com.apple.proapps.studio.reel\" value=\"\(XMLExportSupport.escapeText(rollName))\"/>")
+        }
+        if let cameraID {
+            fields.append("<md key=\"com.apple.proapps.mio.cameraName\" value=\"\(XMLExportSupport.escapeText(cameraID))\"/>")
+        }
+
+        guard !fields.isEmpty else {
+            return "<metadata/>"
+        }
+
+        return """
+        <metadata>
+        \(fields.map { "  \($0)" }.joined(separator: "\n"))
+        </metadata>
+        """
+    }
+
+    nonisolated private static func timing(for row: FinalCutMetadataXMLRow) -> FCPXMLTiming {
+        let timecode = row.metadata.startTimecode
+        let fps = timecode?.fps ?? 25
+        let playbackFrameRate = timecode?.playbackFrameRate ?? Double(fps)
+        let durationFrames = XMLExportSupport.frameCount(
+            duration: row.metadata.duration,
+            playbackFrameRate: playbackFrameRate
+        )
+        let startFrame = timecode?.totalFrames ?? 0
+        let frameDuration = frameDurationString(fps: fps, playbackFrameRate: playbackFrameRate)
+        let denominator = timingDenominator(fps: fps, playbackFrameRate: playbackFrameRate)
+        let numerator = timingNumerator(fps: fps, playbackFrameRate: playbackFrameRate)
+        return FCPXMLTiming(
+            start: "\(startFrame * numerator)/\(denominator)s",
+            duration: "\(durationFrames * numerator)/\(denominator)s",
+            frameDuration: frameDuration,
+            tcFormat: timecode?.isDropFrame == true ? "DF" : "NDF"
+        )
+    }
+
+    nonisolated private static func frameDurationString(fps: Int, playbackFrameRate: Double) -> String {
+        if abs(playbackFrameRate - Double(fps)) < 0.0001 {
+            return "100/\(fps * 100)s"
+        }
+
+        if fps == 24 {
+            return "1001/24000s"
+        }
+        if fps == 30 {
+            return "1001/30000s"
+        }
+        return "100/\(fps * 100)s"
+    }
+
+    nonisolated private static func timingNumerator(fps: Int, playbackFrameRate: Double) -> Int {
+        abs(playbackFrameRate - Double(fps)) < 0.0001 ? 1 : 1001
+    }
+
+    nonisolated private static func timingDenominator(fps: Int, playbackFrameRate: Double) -> Int {
+        if abs(playbackFrameRate - Double(fps)) < 0.0001 {
+            return fps
+        }
+        return fps * 1000
+    }
+
+    private struct FCPXMLTiming {
+        let start: String
+        let duration: String
+        let frameDuration: String
+        let tcFormat: String
+    }
+
+    enum ExportError: LocalizedError {
+        case noMetadata
+        case encodingFailed
+
+        var errorDescription: String? {
+            switch self {
+            case .noMetadata:
+                "没有可导出的 Final Cut Pro XML 元数据字段"
+            case .encodingFailed:
+                "Final Cut Pro XML 文本编码失败"
+            }
+        }
+    }
+}
+
+private enum XMLExportSupport {
+    nonisolated static func commonRollName(rows: [FinalCutMetadataXMLRow]) -> String? {
+        let rollNames = Set(rows.compactMap { trimmed($0.metadata.roll) })
+        return rollNames.count == 1 ? rollNames.first : nil
+    }
+
+    nonisolated static func frameCount(duration: Double?, playbackFrameRate: Double) -> Int {
+        guard let duration, duration.isFinite, playbackFrameRate > 0 else {
+            return 1
+        }
+
+        return max(1, Int((duration * playbackFrameRate).rounded()))
+    }
+
+    nonisolated static func safeXMLID(stem: String, index: Int) -> String {
+        let allowed = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "_-"))
+        let sanitized = stem.unicodeScalars.map { scalar in
+            allowed.contains(scalar) ? String(scalar) : "_"
+        }.joined()
+        let base = sanitized.isEmpty ? "clip" : sanitized
+        return "\(base)_\(index + 1)"
+    }
+
+    nonisolated static func trimmed(_ value: String?) -> String? {
+        guard let value = value?.trimmingCharacters(in: .whitespacesAndNewlines), !value.isEmpty else {
+            return nil
+        }
+
+        return value
+    }
+
+    nonisolated static func escapeText(_ value: String) -> String {
+        value
+            .replacingOccurrences(of: "&", with: "&amp;")
+            .replacingOccurrences(of: "<", with: "&lt;")
+            .replacingOccurrences(of: ">", with: "&gt;")
+            .replacingOccurrences(of: "\"", with: "&quot;")
+            .replacingOccurrences(of: "'", with: "&apos;")
+    }
+
+    nonisolated static func xmemlRateXML(for timecode: Timecode?) -> String {
+        let fps = timecode?.fps ?? 25
+        let playbackFrameRate = timecode?.playbackFrameRate ?? Double(fps)
+        let isNTSC = abs(playbackFrameRate - Double(fps)) > 0.0001
+        return """
+        <rate>
+          <ntsc>\(isNTSC ? "TRUE" : "FALSE")</ntsc>
+          <timebase>\(fps)</timebase>
+        </rate>
+        """
+    }
+}
+
 private extension String {
-    func indented(by spaces: Int) -> String {
+    nonisolated func indented(by spaces: Int) -> String {
         let prefix = String(repeating: " ", count: spaces)
         return split(separator: "\n", omittingEmptySubsequences: false)
             .map { $0.isEmpty ? "" : prefix + $0 }

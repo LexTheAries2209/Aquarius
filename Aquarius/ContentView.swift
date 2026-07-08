@@ -96,6 +96,20 @@ struct ContentView: View {
                     Label("Adobe Premiere Pro XML", systemImage: "doc.richtext")
                 }
                 .disabled(!viewModel.canExportPremiereProMetadata || viewModel.isAnalyzing)
+
+                Button {
+                    viewModel.exportFinalCutPro7MetadataXML()
+                } label: {
+                    Label("Final Cut Pro 7 XML", systemImage: "film.stack")
+                }
+                .disabled(!viewModel.canExportFinalCutProMetadata || viewModel.isAnalyzing)
+
+                Button {
+                    viewModel.exportFinalCutProMetadataXML()
+                } label: {
+                    Label("Final Cut Pro XML", systemImage: "film")
+                }
+                .disabled(!viewModel.canExportFinalCutProMetadata || viewModel.isAnalyzing)
             } label: {
                 Label("导出元数据", systemImage: "square.and.arrow.up")
             }

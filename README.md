@@ -44,7 +44,7 @@ V1.0.2 的中文发布说明见 [docs/releases/v1.0.2.zh-CN.md](docs/releases/v1
 - 检测视频帧率与源 TC 帧率不一致、疑似漂移、高风险时间码等情况；详细诊断可在项目设置里按需显示。
 - 读取现有文件元数据；如果系统安装了可选的 MediaInfo CLI（`mediainfo`），会显示更完整的容器、编码、帧率、时长和当前 timecode 信息。
 - 支持手动覆盖当前素材的文件名和起始 TC，也支持对当前列表批量覆盖卷号和机位号。
-- 导出面向 DaVinci Resolve 或 Adobe Premiere Pro 的元数据。
+- 导出面向 DaVinci Resolve、Adobe Premiere Pro、Final Cut Pro 7 或 Final Cut Pro 的元数据。
 - 可选将起始时间码写入 QuickTime TMCD 轨道。
 - 可选复制到新文件夹并按识别或手动输入的文件名改名。
 - 可选在复制改名后自动生成一份配套元数据 CSV，使用改名后的真实文件名作为目标软件匹配键。
@@ -107,6 +107,12 @@ V1.0.2 的中文发布说明见 [docs/releases/v1.0.2.zh-CN.md](docs/releases/v1
 ### Adobe Premiere Pro XML
 
 Premiere Pro 导出会生成 `xmeml version="4"` XML 文件，结构参考 SilverStack Lab 的 Adobe Premiere Pro XML：顶层 bin、`Video Clips` 子 bin、每个素材一条 master clip，并写入源文件 `pathurl`、起始 timecode frame、NDF/DF 标记和 reel/cameraroll。
+
+### Final Cut Pro XML
+
+Final Cut Pro 7 导出会生成 legacy `xmeml version="4"` XML，结构参考 SilverStack Lab 的 Final Cut Pro 7 XML：顶层 bin、每个素材一条 clip，并写入 `pathurl`、源时间码 frame、DF/NDF、reel 和基础注释。
+
+Final Cut Pro 导出会生成现代 `fcpxml version="1.9"` 文件，包含 `resources/asset`、`library/event/asset-clip`、素材路径、起始 TC、持续时间，以及 reel/camera 元数据。Apple 文档说明 FCPXML 用于在 Final Cut Pro 和第三方工具之间交换 media、metadata 和 Final Cut Pro items，因此这类 XML 可以通过 Final Cut Pro 的 Import XML 流程导入为素材、事件、项目或资料库内容。
 
 ### 时间码写入和改名
 
@@ -173,7 +179,7 @@ Common use cases:
 - Warn about frame-rate mismatch, suspected drift, high-risk readings, and mismatch against existing TMCD metadata; detailed diagnostics can be hidden or shown from Project Settings.
 - Read existing source metadata; with the optional MediaInfo CLI (`mediainfo`) installed, the app displays richer container, codec, frame-rate, duration, and timecode details.
 - Manually override clip name, start TC, reel number, and camera ID before export.
-- Export metadata for DaVinci Resolve or Adobe Premiere Pro.
+- Export metadata for DaVinci Resolve, Adobe Premiere Pro, Final Cut Pro 7, or Final Cut Pro.
 - Optionally write recovered start TC into QuickTime TMCD metadata.
 - Optionally copy files into a new folder using recognized or manually entered clip names.
 - Optionally create a companion metadata CSV after renaming, using the renamed output files as the target app match keys.
@@ -232,6 +238,12 @@ When companion CSV generation is enabled for renamed outputs, the CSV uses the a
 ### Adobe Premiere Pro XML
 
 Premiere Pro export generates an `xmeml version="4"` XML file following the structure used by SilverStack Lab's Adobe Premiere Pro XML: a top-level bin, a `Video Clips` sub-bin, one master clip per source file, and source `pathurl`, timecode frame, NDF/DF display format, and reel/cameraroll metadata.
+
+### Final Cut Pro XML
+
+Final Cut Pro 7 export generates legacy `xmeml version="4"` XML following SilverStack Lab's Final Cut Pro 7 XML structure: a top-level bin, one clip per source file, and source `pathurl`, timecode frame, DF/NDF display format, reel, and basic comments.
+
+Final Cut Pro export generates modern `fcpxml version="1.9"` with `resources/asset`, `library/event/asset-clip`, media paths, start TC, duration, and reel/camera metadata. Apple documents FCPXML as the format for exchanging media, metadata, and Final Cut Pro items between Final Cut Pro and third-party tools, so these XML files are intended for Final Cut Pro's Import XML workflow.
 
 ### Timecode Writing And Renaming
 
