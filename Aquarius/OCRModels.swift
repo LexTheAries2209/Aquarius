@@ -1525,6 +1525,172 @@ struct FinalCutProXMLExporter {
     }
 }
 
+struct AvidALERow {
+    let videoURL: URL
+    let metadata: ClipExportMetadata
+
+    nonisolated init(videoURL: URL, metadata: ClipExportMetadata) {
+        self.videoURL = videoURL
+        self.metadata = metadata
+    }
+}
+
+struct AvidALEExporter {
+    nonisolated static let columns = [
+        "Name",
+        "Start",
+        "End",
+        "Duration",
+        "FPS",
+        "Frame count",
+        "CamRoll",
+        "Reel name",
+        "Camera",
+        "Source File",
+        "File path",
+        "Filetype"
+    ]
+
+    nonisolated static func hasExportableMetadata(_ metadata: ClipExportMetadata) -> Bool {
+        metadata.startTimecode != nil
+            || trimmed(metadata.clipName) != nil
+            || trimmed(metadata.roll) != nil
+            || trimmed(metadata.cameraID) != nil
+    }
+
+    nonisolated static func makeData(rows: [AvidALERow]) throws -> Data {
+        let rows = rows.filter { hasExportableMetadata($0.metadata) }
+        guard !rows.isEmpty else {
+            throw ExportError.noMetadata
+        }
+
+        let aleText = [
+            "Heading",
+            "FIELD_DELIM\tTABS",
+            "VIDEO_FORMAT\t\(videoFormat(for: rows))",
+            "FPS\t\(headingFPS(for: rows))",
+            "",
+            "Column",
+            columns.joined(separator: "\t"),
+            "",
+            "Data",
+            rows.map(dataLine(for:)).joined(separator: "\n")
+        ].joined(separator: "\n") + "\n"
+
+        guard let data = aleText.data(using: .utf8) else {
+            throw ExportError.encodingFailed
+        }
+        return data
+    }
+
+    nonisolated private static func dataLine(for row: AvidALERow) -> String {
+        let metadata = row.metadata
+        let timecode = metadata.startTimecode
+        let playbackFrameRate = timecode?.playbackFrameRate ?? Double(timecode?.fps ?? 25)
+        let frameCount = durationFrameCount(metadata.duration, playbackFrameRate: playbackFrameRate)
+        let endTimecode = timecode.flatMap { start -> Timecode? in
+            guard let frameCount else {
+                return nil
+            }
+            return Timecode.from(
+                totalFrames: start.totalFrames + frameCount,
+                fps: start.fps,
+                playbackFrameRate: start.playbackFrameRate,
+                isDropFrame: start.isDropFrame
+            )
+        }
+        let durationTimecode = timecode.flatMap { start -> Timecode? in
+            guard let frameCount else {
+                return nil
+            }
+            return Timecode.from(
+                totalFrames: frameCount,
+                fps: start.fps,
+                playbackFrameRate: start.playbackFrameRate,
+                isDropFrame: start.isDropFrame
+            )
+        }
+
+        let values = [
+            trimmed(metadata.clipName) ?? row.videoURL.deletingPathExtension().lastPathComponent,
+            timecode?.description ?? "",
+            endTimecode?.description ?? "",
+            durationTimecode?.description ?? "",
+            timecode.map(fpsText(for:)) ?? "",
+            frameCount.map(String.init) ?? "",
+            trimmed(metadata.roll) ?? "",
+            trimmed(metadata.roll) ?? "",
+            trimmed(metadata.cameraID) ?? "",
+            row.videoURL.lastPathComponent,
+            row.videoURL.path,
+            row.videoURL.pathExtension.lowercased()
+        ]
+
+        return values.map(sanitizeField).joined(separator: "\t")
+    }
+
+    nonisolated private static func headingFPS(for rows: [AvidALERow]) -> String {
+        rows.first(where: { $0.metadata.startTimecode != nil })
+            .flatMap { $0.metadata.startTimecode.map(fpsText(for:)) } ?? "25"
+    }
+
+    nonisolated private static func videoFormat(for rows: [AvidALERow]) -> String {
+        let timecode = rows.first(where: { $0.metadata.startTimecode != nil })?.metadata.startTimecode
+        return timecode?.fps == 25 && timecode?.isDropFrame == false ? "PAL" : "NTSC"
+    }
+
+    nonisolated private static func durationFrameCount(_ duration: Double?, playbackFrameRate: Double) -> Int? {
+        guard let duration, duration.isFinite, playbackFrameRate > 0 else {
+            return nil
+        }
+
+        return max(1, Int((duration * playbackFrameRate).rounded()))
+    }
+
+    nonisolated private static func fpsText(for timecode: Timecode) -> String {
+        let playbackFrameRate = timecode.playbackFrameRate
+        if abs(playbackFrameRate - (24_000.0 / 1_001.0)) < 0.01 {
+            return "23.976"
+        }
+        if abs(playbackFrameRate - (30_000.0 / 1_001.0)) < 0.01 {
+            return "29.97"
+        }
+        if abs(playbackFrameRate.rounded() - playbackFrameRate) < 0.001 {
+            return "\(Int(playbackFrameRate.rounded()))"
+        }
+        return String(format: "%.3f", playbackFrameRate)
+    }
+
+    nonisolated private static func trimmed(_ value: String?) -> String? {
+        guard let value = value?.trimmingCharacters(in: .whitespacesAndNewlines), !value.isEmpty else {
+            return nil
+        }
+
+        return value
+    }
+
+    nonisolated private static func sanitizeField(_ value: String) -> String {
+        value
+            .replacingOccurrences(of: "\t", with: " ")
+            .replacingOccurrences(of: "\r", with: " ")
+            .replacingOccurrences(of: "\n", with: " ")
+    }
+
+    enum ExportError: LocalizedError {
+        case noMetadata
+        case encodingFailed
+
+        var errorDescription: String? {
+            switch self {
+            case .noMetadata:
+                "没有可导出的 Avid ALE 元数据字段"
+            case .encodingFailed:
+                "Avid ALE 文本编码失败"
+            }
+        }
+    }
+}
+
 private enum XMLExportSupport {
     nonisolated static func commonRollName(rows: [FinalCutMetadataXMLRow]) -> String? {
         let rollNames = Set(rows.compactMap { trimmed($0.metadata.roll) })

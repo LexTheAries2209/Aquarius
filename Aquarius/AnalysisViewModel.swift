@@ -248,6 +248,10 @@ final class AnalysisViewModel: ObservableObject {
         max(0, mediaItems.count - finalCutXMLRows.count)
     }
 
+    var skippedAvidALEMetadataItemCount: Int {
+        max(0, mediaItems.count - avidALERows.count)
+    }
+
     var hasAnalysisRecords: Bool {
         mediaItems.contains { item in
             item.result != nil || item.errorMessage != nil || item.analysisStatus != .pending
@@ -266,10 +270,15 @@ final class AnalysisViewModel: ObservableObject {
         !finalCutXMLRows.isEmpty
     }
 
+    var canExportAvidALEMetadata: Bool {
+        !avidALERows.isEmpty
+    }
+
     var canExportMetadata: Bool {
         canExportDaVinciMetadata
             || canExportPremiereProMetadata
             || canExportFinalCutProMetadata
+            || canExportAvidALEMetadata
     }
 
     var shouldShowTimecodeBurnButton: Bool {
@@ -1066,6 +1075,44 @@ final class AnalysisViewModel: ObservableObject {
         }
     }
 
+    func exportAvidMetadataALE() {
+        let rows = avidALERows
+        guard !rows.isEmpty else {
+            errorMessage = "当前列表没有可导出的 Avid ALE 元数据"
+            statusMessage = "导出失败：没有可导出条目"
+            return
+        }
+
+        let aleData: Data
+        do {
+            aleData = try AvidALEExporter.makeData(rows: rows)
+        } catch {
+            errorMessage = error.localizedDescription
+            statusMessage = "导出 Avid ALE 失败"
+            return
+        }
+
+        let savePanel = NSSavePanel()
+        savePanel.allowedContentTypes = [.init(filenameExtension: "ale")!]
+        savePanel.canCreateDirectories = true
+        savePanel.isExtensionHidden = false
+        savePanel.nameFieldStringValue = "Aquarius_Avid_Metadata.ale"
+
+        guard savePanel.runModal() == .OK, let destination = savePanel.url else {
+            return
+        }
+
+        do {
+            try aleData.write(to: destination, options: .atomic)
+            errorMessage = nil
+            let skippedText = skippedAvidALEMetadataItemCount > 0 ? "，跳过 \(skippedAvidALEMetadataItemCount) 个" : ""
+            statusMessage = "已导出 \(rows.count) 条 Avid ALE\(skippedText)：\(destination.lastPathComponent)"
+        } catch {
+            errorMessage = error.localizedDescription
+            statusMessage = "导出 Avid ALE 失败"
+        }
+    }
+
     func runTimecodeBurnAction() {
         switch timecodeBurnOutputMode {
         case .sourceFile:
@@ -1476,6 +1523,16 @@ final class AnalysisViewModel: ObservableObject {
                 return nil
             }
             return FinalCutMetadataXMLRow(videoURL: item.url, metadata: metadata)
+        }
+    }
+
+    private var avidALERows: [AvidALERow] {
+        mediaItems.compactMap { item in
+            let metadata = exportMetadata(for: item)
+            guard AvidALEExporter.hasExportableMetadata(metadata) else {
+                return nil
+            }
+            return AvidALERow(videoURL: item.url, metadata: metadata)
         }
     }
 

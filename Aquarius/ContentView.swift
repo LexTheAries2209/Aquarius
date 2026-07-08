@@ -110,6 +110,13 @@ struct ContentView: View {
                     Label("Final Cut Pro XML", systemImage: "film")
                 }
                 .disabled(!viewModel.canExportFinalCutProMetadata || viewModel.isAnalyzing)
+
+                Button {
+                    viewModel.exportAvidMetadataALE()
+                } label: {
+                    Label("Avid Media Composer ALE", systemImage: "list.bullet.rectangle")
+                }
+                .disabled(!viewModel.canExportAvidALEMetadata || viewModel.isAnalyzing)
             } label: {
                 Label("导出元数据", systemImage: "square.and.arrow.up")
             }
