@@ -1202,6 +1202,14 @@ private struct ProjectSettingsView: View {
                                 .foregroundStyle(.secondary)
                         }
                     }
+
+                    settingsSection(title: "关于 Aquarius") {
+                        Text("GitHub 仓库：github.com/LexTheAries2209/Aquarius。代码、版本说明、发布包与问题反馈均在仓库维护，欢迎通过 Issue 或 Pull Request 参与改进。")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .textSelection(.enabled)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
                 }
                 .padding(22)
             }
