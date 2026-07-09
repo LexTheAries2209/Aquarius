@@ -92,6 +92,57 @@ private func drawEngravedStroke(from start: NSPoint, to end: NSPoint, count: Int
     }
 }
 
+private func drawShortHatches(along start: NSPoint, to end: NSPoint, count: Int, angle: CGFloat, length: CGFloat, color: NSColor, width: CGFloat) {
+    guard count > 1 else { return }
+    let dx = cos(angle) * length
+    let dy = sin(angle) * length
+    for index in 0..<count {
+        let t = CGFloat(index) / CGFloat(count - 1)
+        let x = start.x + (end.x - start.x) * t
+        let y = start.y + (end.y - start.y) * t
+        drawLine(
+            [NSPoint(x: x - dx * 0.5, y: y - dy * 0.5), NSPoint(x: x + dx * 0.5, y: y + dy * 0.5)],
+            color: color,
+            width: width
+        )
+    }
+}
+
+private func drawTinyStar(at point: NSPoint, radius: CGFloat, color: NSColor, filled: Bool = false) {
+    let star = NSBezierPath(ovalIn: NSRect(
+        x: point.x - radius,
+        y: point.y - radius,
+        width: radius * 2,
+        height: radius * 2
+    ))
+    star.lineWidth = max(0.55, radius * 0.20)
+    color.setStroke()
+    if filled {
+        color.withAlphaComponent(min(1, color.alphaComponent + 0.25)).setFill()
+        star.fill()
+    }
+    star.stroke()
+
+    let cross = NSBezierPath()
+    cross.move(to: NSPoint(x: point.x - radius * 1.9, y: point.y))
+    cross.line(to: NSPoint(x: point.x + radius * 1.9, y: point.y))
+    cross.move(to: NSPoint(x: point.x, y: point.y - radius * 1.9))
+    cross.line(to: NSPoint(x: point.x, y: point.y + radius * 1.9))
+    cross.lineWidth = max(0.45, radius * 0.11)
+    cross.stroke()
+}
+
+private func drawLabel(_ text: String, at point: NSPoint, size: CGFloat, alpha: CGFloat = 0.36) {
+    let attributes: [NSAttributedString.Key: Any] = [
+        .font: font(named: "TimesNewRomanPS-ItalicMT", size: size),
+        .foregroundColor: NSColor(white: 0.12, alpha: alpha)
+    ]
+    (text as NSString).draw(
+        in: NSRect(x: point.x, y: point.y, width: size * 6.5, height: size * 1.45),
+        withAttributes: attributes
+    )
+}
+
 private func drawPaperTexture(in rect: NSRect, seed: UInt64, density: Int, alpha: CGFloat) {
     var random = LCG(seed: seed)
     for _ in 0..<density {
@@ -366,6 +417,307 @@ private func drawEngravingField(size: CGFloat, topRect: NSRect, blue: NSColor) {
     )
 }
 
+private func drawRetroEngravingField(size: CGFloat, topRect: NSRect, blue: NSColor) {
+    NSColor(white: 0.925, alpha: 1).setFill()
+    topRect.fill()
+    drawPaperTexture(in: topRect, seed: 22092009, density: 12_000, alpha: 0.20)
+
+    let gridColor = NSColor(white: 0.18, alpha: 0.20)
+    for x in stride(from: topRect.minX - size * 0.12, through: topRect.maxX + size * 0.12, by: size * 0.116) {
+        drawLine(
+            [NSPoint(x: x, y: topRect.minY), NSPoint(x: x + size * 0.035, y: topRect.maxY)],
+            color: gridColor,
+            width: size * 0.0010
+        )
+    }
+    for y in stride(from: topRect.minY + size * 0.055, through: topRect.maxY - size * 0.025, by: size * 0.086) {
+        drawLine(
+            [NSPoint(x: topRect.minX, y: y), NSPoint(x: topRect.maxX, y: y + size * 0.012)],
+            color: gridColor,
+            width: size * 0.0010
+        )
+    }
+
+    let arcColor = NSColor(white: 0.12, alpha: 0.18)
+    for radius in stride(from: size * 0.34, through: size * 0.96, by: size * 0.105) {
+        let path = NSBezierPath()
+        path.appendArc(
+            withCenter: NSPoint(x: size * 0.61, y: topRect.minY + size * 0.08),
+            radius: radius,
+            startAngle: 20,
+            endAngle: 156,
+            clockwise: false
+        )
+        path.lineWidth = size * 0.0009
+        arcColor.setStroke()
+        path.stroke()
+    }
+
+    let ink = NSColor(white: 0.08, alpha: 0.62)
+    let midInk = NSColor(white: 0.08, alpha: 0.34)
+    let paleInk = NSColor(white: 0.08, alpha: 0.19)
+    let waterBlue = blue.withAlphaComponent(0.33)
+
+    let eclipticY = topRect.minY + size * 0.455
+    let ecliptic = NSBezierPath()
+    ecliptic.move(to: NSPoint(x: 0, y: eclipticY))
+    ecliptic.line(to: NSPoint(x: size, y: eclipticY + size * 0.008))
+    ecliptic.lineWidth = size * 0.008
+    ecliptic.lineCapStyle = .butt
+    ecliptic.setLineDash([size * 0.018, size * 0.010], count: 2, phase: 0)
+    NSColor(white: 0.05, alpha: 0.55).setStroke()
+    ecliptic.stroke()
+    drawLine(
+        [NSPoint(x: 0, y: eclipticY + size * 0.022), NSPoint(x: size, y: eclipticY + size * 0.030)],
+        color: NSColor(white: 0.12, alpha: 0.16),
+        width: size * 0.0011
+    )
+
+    let starField = [
+        NSPoint(x: 0.075, y: 0.530), NSPoint(x: 0.126, y: 0.620), NSPoint(x: 0.205, y: 0.575),
+        NSPoint(x: 0.295, y: 0.640), NSPoint(x: 0.382, y: 0.565), NSPoint(x: 0.468, y: 0.620),
+        NSPoint(x: 0.575, y: 0.545), NSPoint(x: 0.682, y: 0.602), NSPoint(x: 0.790, y: 0.526),
+        NSPoint(x: 0.888, y: 0.588), NSPoint(x: 0.936, y: 0.487), NSPoint(x: 0.720, y: 0.735),
+        NSPoint(x: 0.840, y: 0.766), NSPoint(x: 0.948, y: 0.705), NSPoint(x: 0.612, y: 0.755)
+    ].map { NSPoint(x: $0.x * size, y: topRect.minY + $0.y * size) }
+    drawLine(Array(starField[0...10]), color: NSColor(white: 0.06, alpha: 0.24), width: size * 0.0016)
+    drawLine(Array(starField[11...14]), color: NSColor(white: 0.06, alpha: 0.18), width: size * 0.0011)
+    for (index, star) in starField.enumerated() {
+        drawTinyStar(
+            at: star,
+            radius: size * (index % 4 == 0 ? 0.0049 : 0.0036),
+            color: index % 5 == 0 ? ink : midInk,
+            filled: index % 6 == 0
+        )
+    }
+
+    var random = LCG(seed: 19010729)
+    for _ in 0..<72 {
+        let x = CGFloat(random.next()) * size
+        let y = topRect.minY + CGFloat(random.next()) * topRect.height
+        drawTinyStar(
+            at: NSPoint(x: x, y: y),
+            radius: size * CGFloat(0.0018 + random.next() * 0.0016),
+            color: NSColor(white: 0.08, alpha: CGFloat(0.14 + random.next() * 0.16))
+        )
+    }
+
+    let shoulder = NSPoint(x: size * 0.235, y: topRect.minY + size * 0.390)
+    let hip = NSPoint(x: size * 0.500, y: topRect.minY + size * 0.235)
+    let knee = NSPoint(x: size * 0.330, y: topRect.minY + size * 0.110)
+    let back = NSPoint(x: size * 0.105, y: topRect.minY + size * 0.180)
+
+    let body = NSBezierPath()
+    body.move(to: shoulder)
+    body.curve(
+        to: hip,
+        controlPoint1: NSPoint(x: size * 0.315, y: topRect.minY + size * 0.342),
+        controlPoint2: NSPoint(x: size * 0.440, y: topRect.minY + size * 0.354)
+    )
+    body.curve(
+        to: knee,
+        controlPoint1: NSPoint(x: size * 0.455, y: topRect.minY + size * 0.165),
+        controlPoint2: NSPoint(x: size * 0.410, y: topRect.minY + size * 0.118)
+    )
+    body.curve(
+        to: back,
+        controlPoint1: NSPoint(x: size * 0.235, y: topRect.minY + size * 0.078),
+        controlPoint2: NSPoint(x: size * 0.150, y: topRect.minY + size * 0.108)
+    )
+    body.curve(
+        to: shoulder,
+        controlPoint1: NSPoint(x: size * 0.065, y: topRect.minY + size * 0.235),
+        controlPoint2: NSPoint(x: size * 0.118, y: topRect.minY + size * 0.340)
+    )
+    body.close()
+    body.lineWidth = size * 0.0037
+    NSColor(white: 0.965, alpha: 0.46).setFill()
+    ink.setStroke()
+    body.fill()
+    body.stroke()
+
+    for index in 0..<38 {
+        let t = CGFloat(index) / 37
+        let start = NSPoint(
+            x: size * (0.105 + t * 0.400),
+            y: topRect.minY + size * (0.138 + sin(t * .pi) * 0.132)
+        )
+        let end = NSPoint(
+            x: start.x + size * (0.048 + t * 0.042),
+            y: start.y + size * (0.145 - t * 0.070)
+        )
+        drawLine([start, end], color: NSColor(white: 0.06, alpha: 0.145), width: size * 0.0011)
+    }
+    drawEngravedStroke(
+        from: NSPoint(x: size * 0.120, y: topRect.minY + size * 0.145),
+        to: NSPoint(x: size * 0.455, y: topRect.minY + size * 0.315),
+        count: 24,
+        color: NSColor(white: 0.06, alpha: 0.115),
+        width: size * 0.00095
+    )
+
+    let head = NSBezierPath(ovalIn: NSRect(
+        x: size * 0.150,
+        y: topRect.minY + size * 0.388,
+        width: size * 0.124,
+        height: size * 0.140
+    ))
+    NSColor(white: 0.955, alpha: 0.50).setFill()
+    ink.setStroke()
+    head.lineWidth = size * 0.0036
+    head.fill()
+    head.stroke()
+
+    let profile = NSBezierPath()
+    profile.move(to: NSPoint(x: size * 0.236, y: topRect.minY + size * 0.486))
+    profile.curve(
+        to: NSPoint(x: size * 0.269, y: topRect.minY + size * 0.450),
+        controlPoint1: NSPoint(x: size * 0.260, y: topRect.minY + size * 0.485),
+        controlPoint2: NSPoint(x: size * 0.276, y: topRect.minY + size * 0.468)
+    )
+    profile.curve(
+        to: NSPoint(x: size * 0.230, y: topRect.minY + size * 0.425),
+        controlPoint1: NSPoint(x: size * 0.252, y: topRect.minY + size * 0.438),
+        controlPoint2: NSPoint(x: size * 0.244, y: topRect.minY + size * 0.428)
+    )
+    profile.lineWidth = size * 0.0016
+    midInk.setStroke()
+    profile.stroke()
+    drawTinyStar(at: NSPoint(x: size * 0.226, y: topRect.minY + size * 0.470), radius: size * 0.0018, color: midInk, filled: true)
+
+    for index in 0..<32 {
+        let t = CGFloat(index) / 31
+        let curl = NSBezierPath()
+        let x = size * (0.124 + t * 0.145)
+        curl.move(to: NSPoint(x: x, y: topRect.minY + size * (0.500 - sin(t * .pi) * 0.028)))
+        curl.curve(
+            to: NSPoint(x: x + size * 0.018, y: topRect.minY + size * 0.440),
+            controlPoint1: NSPoint(x: x + size * 0.033, y: topRect.minY + size * 0.515),
+            controlPoint2: NSPoint(x: x - size * 0.011, y: topRect.minY + size * 0.466)
+        )
+        curl.lineWidth = size * 0.0013
+        midInk.setStroke()
+        curl.stroke()
+    }
+    drawShortHatches(
+        along: NSPoint(x: size * 0.133, y: topRect.minY + size * 0.510),
+        to: NSPoint(x: size * 0.268, y: topRect.minY + size * 0.476),
+        count: 34,
+        angle: .pi * 0.18,
+        length: size * 0.030,
+        color: NSColor(white: 0.06, alpha: 0.15),
+        width: size * 0.0008
+    )
+
+    let arm = NSBezierPath()
+    arm.move(to: NSPoint(x: size * 0.270, y: topRect.minY + size * 0.360))
+    arm.curve(
+        to: NSPoint(x: size * 0.542, y: topRect.minY + size * 0.458),
+        controlPoint1: NSPoint(x: size * 0.340, y: topRect.minY + size * 0.430),
+        controlPoint2: NSPoint(x: size * 0.458, y: topRect.minY + size * 0.438)
+    )
+    arm.lineWidth = size * 0.009
+    midInk.setStroke()
+    arm.stroke()
+
+    NSGraphicsContext.saveGraphicsState()
+    let transform = NSAffineTransform()
+    transform.translateX(by: size * 0.540, yBy: topRect.minY + size * 0.430)
+    transform.rotate(byDegrees: -23)
+    transform.concat()
+    let urn = NSBezierPath()
+    urn.move(to: NSPoint(x: -size * 0.076, y: -size * 0.058))
+    urn.curve(
+        to: NSPoint(x: size * 0.092, y: -size * 0.040),
+        controlPoint1: NSPoint(x: -size * 0.038, y: -size * 0.112),
+        controlPoint2: NSPoint(x: size * 0.070, y: -size * 0.104)
+    )
+    urn.curve(
+        to: NSPoint(x: size * 0.074, y: size * 0.112),
+        controlPoint1: NSPoint(x: size * 0.122, y: size * 0.014),
+        controlPoint2: NSPoint(x: size * 0.106, y: size * 0.082)
+    )
+    urn.curve(
+        to: NSPoint(x: -size * 0.074, y: size * 0.092),
+        controlPoint1: NSPoint(x: size * 0.020, y: size * 0.146),
+        controlPoint2: NSPoint(x: -size * 0.046, y: size * 0.132)
+    )
+    urn.curve(
+        to: NSPoint(x: -size * 0.076, y: -size * 0.058),
+        controlPoint1: NSPoint(x: -size * 0.108, y: size * 0.034),
+        controlPoint2: NSPoint(x: -size * 0.114, y: -size * 0.022)
+    )
+    urn.close()
+    urn.lineWidth = size * 0.0038
+    NSColor(white: 0.975, alpha: 0.56).setFill()
+    urn.fill()
+    ink.setStroke()
+    urn.stroke()
+
+    let neck = NSBezierPath()
+    neck.move(to: NSPoint(x: -size * 0.056, y: size * 0.070))
+    neck.line(to: NSPoint(x: size * 0.060, y: size * 0.086))
+    neck.lineWidth = size * 0.0024
+    midInk.setStroke()
+    neck.stroke()
+
+    for offset in stride(from: -0.056, through: 0.056, by: 0.014) {
+        let rib = NSBezierPath()
+        rib.move(to: NSPoint(x: size * CGFloat(offset), y: -size * 0.054))
+        rib.curve(
+            to: NSPoint(x: size * CGFloat(offset * 0.50), y: size * 0.100),
+            controlPoint1: NSPoint(x: size * CGFloat(offset * 1.52), y: size * 0.012),
+            controlPoint2: NSPoint(x: size * CGFloat(offset * 0.92), y: size * 0.070)
+        )
+        rib.lineWidth = size * 0.0011
+        paleInk.setStroke()
+        rib.stroke()
+    }
+    NSGraphicsContext.restoreGraphicsState()
+
+    for i in 0..<8 {
+        drawWave(
+            y: topRect.minY + size * (0.182 + CGFloat(i) * 0.038),
+            amplitude: size * 0.010,
+            period: size * 0.145,
+            x0: size * 0.468,
+            x1: size * 0.965,
+            color: i % 2 == 0 ? waterBlue : paleInk,
+            width: size * 0.0022
+        )
+    }
+
+    for i in 0..<44 {
+        let y = topRect.minY + size * (0.120 + CGFloat(i) * 0.0105)
+        drawWave(
+            y: y,
+            amplitude: size * 0.0037,
+            period: size * 0.103,
+            x0: size * 0.365,
+            x1: size * 0.990,
+            color: NSColor(white: 0.06, alpha: 0.105),
+            width: size * 0.00075
+        )
+    }
+
+    let constellationLeft = [
+        NSPoint(x: size * 0.062, y: topRect.minY + size * 0.265),
+        NSPoint(x: size * 0.118, y: topRect.minY + size * 0.356),
+        NSPoint(x: size * 0.220, y: topRect.minY + size * 0.318),
+        NSPoint(x: size * 0.305, y: topRect.minY + size * 0.394)
+    ]
+    drawLine(constellationLeft, color: NSColor(white: 0.06, alpha: 0.18), width: size * 0.0010)
+    for star in constellationLeft {
+        drawTinyStar(at: star, radius: size * 0.0040, color: midInk)
+    }
+
+    drawLabel("Aquarius", at: NSPoint(x: size * 0.105, y: topRect.minY + size * 0.034), size: size * 0.033, alpha: 0.40)
+    drawLabel("Fig. XI", at: NSPoint(x: size * 0.552, y: topRect.minY + size * 0.505), size: size * 0.033, alpha: 0.36)
+    drawLabel("Ecliptica", at: NSPoint(x: size * 0.175, y: eclipticY + size * 0.014), size: size * 0.020, alpha: 0.34)
+    drawLabel("Piscis", at: NSPoint(x: size * 0.678, y: topRect.minY + size * 0.642), size: size * 0.020, alpha: 0.26)
+    drawLabel("Longitudo", at: NSPoint(x: size * 0.790, y: topRect.minY + size * 0.060), size: size * 0.018, alpha: 0.24)
+}
+
 private func drawBlueLabel(size: CGFloat, labelRect: NSRect, blue: NSColor) {
     blue.setFill()
     labelRect.fill()
@@ -464,7 +816,7 @@ private func makeMasterIcon(size: Int) -> NSBitmapImageRep {
     let labelRect = NSRect(x: 0, y: 0, width: s, height: labelHeight)
     let topRect = NSRect(x: 0, y: labelHeight, width: s, height: s - labelHeight)
 
-    drawEngravingField(size: s, topRect: topRect, blue: blue)
+    drawRetroEngravingField(size: s, topRect: topRect, blue: blue)
     drawBlueLabel(size: s, labelRect: labelRect, blue: blue)
     drawText(size: s, labelRect: labelRect, blue: blue)
 
