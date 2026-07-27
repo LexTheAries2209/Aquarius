@@ -116,12 +116,7 @@ struct OCRClipAnalyzer {
             let actualSeconds = safeDuration(frameResult.actualTime.seconds, fallback: seconds)
 
             for region in regions {
-                guard let crop = imageProcessor.crop(frame, to: region.normalizedRect),
-                      let processed = imageProcessor.preprocess(crop) else {
-                    continue
-                }
-
-                guard let candidate = try? recognizer.recognize(processed, kind: region.kind) else {
+                guard let candidate = recognize(frame, in: region) else {
                     continue
                 }
                 samples.append(
@@ -137,6 +132,31 @@ struct OCRClipAnalyzer {
         }
 
         return samples
+    }
+
+    nonisolated private func recognize(_ frame: CGImage, in region: OCRRegion) -> RecognizedTextCandidate? {
+        guard let expandedCrop = imageProcessor.crop(frame, to: region.normalizedRect, expanded: true),
+              let primaryImage = imageProcessor.preprocess(expandedCrop, variant: .balanced),
+              let primaryCandidate = try? recognizer.recognize(primaryImage, kind: region.kind) else {
+            return nil
+        }
+        guard OCRPreprocessingResolver.shouldUseFallback(primaryCandidate, kind: region.kind) else {
+            return primaryCandidate
+        }
+
+        let tightCrop = imageProcessor.crop(frame, to: region.normalizedRect, expanded: false)
+        let fallbackImages = imageProcessor.fallbackVariants(
+            expandedCrop: expandedCrop,
+            tightCrop: tightCrop
+        )
+        let fallbackCandidates = fallbackImages.compactMap { image in
+            try? recognizer.recognize(image, kind: region.kind)
+        }
+
+        return OCRPreprocessingResolver.resolve(
+            kind: region.kind,
+            candidates: [primaryCandidate] + fallbackCandidates
+        )
     }
 
     nonisolated private func detectFrameRate(asset: AVAsset) async throws -> Double {
@@ -293,16 +313,29 @@ struct OCRClipAnalyzer {
     }
 }
 
+enum OCRImagePreprocessingVariant {
+    case natural
+    case balanced
+    case inverted
+    case threshold
+}
+
 private struct ROIImageProcessor {
     private let context = CIContext()
 
     nonisolated init() {}
 
-    nonisolated func crop(_ image: CGImage, to normalizedRect: CGRect) -> CGImage? {
+    nonisolated func crop(
+        _ image: CGImage,
+        to normalizedRect: CGRect,
+        expanded: Bool
+    ) -> CGImage? {
         let width = CGFloat(image.width)
         let height = CGFloat(image.height)
-        let expanded = normalizedRect.insetBy(dx: -0.010, dy: -0.012)
-        let clamped = expanded.intersection(CGRect(x: 0, y: 0, width: 1, height: 1))
+        let cropRect = expanded
+            ? normalizedRect.insetBy(dx: -0.010, dy: -0.012)
+            : normalizedRect
+        let clamped = cropRect.intersection(CGRect(x: 0, y: 0, width: 1, height: 1))
 
         let pixelRect = CGRect(
             x: clamped.minX * width,
@@ -314,25 +347,72 @@ private struct ROIImageProcessor {
         return image.cropping(to: pixelRect)
     }
 
-    nonisolated func preprocess(_ image: CGImage) -> CGImage? {
-        let ciImage = CIImage(cgImage: image)
+    nonisolated func fallbackVariants(
+        expandedCrop: CGImage,
+        tightCrop: CGImage?
+    ) -> [CGImage] {
+        var images = [
+            preprocess(expandedCrop, variant: .natural),
+            preprocess(expandedCrop, variant: .inverted),
+            preprocess(expandedCrop, variant: .threshold)
+        ].compactMap { $0 }
+
+        if let tightCrop,
+           let tightBalanced = preprocess(tightCrop, variant: .balanced) {
+            images.append(tightBalanced)
+        }
+        return images
+    }
+
+    nonisolated func preprocess(
+        _ image: CGImage,
+        variant: OCRImagePreprocessingVariant
+    ) -> CGImage? {
+        let scaled = CIImage(cgImage: image)
             .transformed(by: CGAffineTransform(scaleX: 2.5, y: 2.5))
+        let monochrome = scaled.applyingFilter(
+            "CIColorControls",
+            parameters: [kCIInputSaturationKey: 0]
+        )
+        let ciImage: CIImage
+
+        switch variant {
+        case .natural:
+            ciImage = monochrome
+        case .balanced:
+            ciImage = balancedImage(monochrome)
+        case .inverted:
+            ciImage = balancedImage(monochrome).applyingFilter("CIColorInvert")
+        case .threshold:
+            if CIFilter(name: "CIColorThreshold") != nil {
+                ciImage = monochrome.applyingFilter(
+                    "CIColorThreshold",
+                    parameters: ["inputThreshold": 0.5]
+                )
+            } else {
+                ciImage = monochrome.applyingFilter(
+                    "CIColorControls",
+                    parameters: [kCIInputContrastKey: 2.4]
+                )
+            }
+        }
+
+        return context.createCGImage(ciImage, from: ciImage.extent)
+    }
+
+    nonisolated private func balancedImage(_ image: CIImage) -> CIImage {
+        image
             .applyingFilter(
                 "CIColorControls",
                 parameters: [
-                    kCIInputSaturationKey: 0,
                     kCIInputContrastKey: 1.65,
                     kCIInputBrightnessKey: 0.03
                 ]
             )
             .applyingFilter(
                 "CISharpenLuminance",
-                parameters: [
-                    kCIInputSharpnessKey: 0.75
-                ]
+                parameters: [kCIInputSharpnessKey: 0.75]
             )
-
-        return context.createCGImage(ciImage, from: ciImage.extent)
     }
 }
 
@@ -346,6 +426,7 @@ struct RecognizedTextCandidate: Sendable {
     let confidence: Double
     let formatScore: Double
     let candidateMargin: Double
+    let preprocessingAgreement: Double
 }
 
 protocol OCRTextRecognizing {
@@ -506,14 +587,21 @@ enum OCRCandidateRanker {
                 return lhs.score > rhs.score
             }
         guard let best = scored.first else {
-            return RecognizedTextCandidate(text: "", confidence: 0, formatScore: 0, candidateMargin: 0)
+            return RecognizedTextCandidate(
+                text: "",
+                confidence: 0,
+                formatScore: 0,
+                candidateMargin: 0,
+                preprocessingAgreement: 0
+            )
         }
 
         return RecognizedTextCandidate(
             text: best.candidate.text,
             confidence: best.candidate.confidence,
             formatScore: best.formatScore,
-            candidateMargin: max(0, best.score - (scored.dropFirst().first?.score ?? 0))
+            candidateMargin: max(0, best.score - (scored.dropFirst().first?.score ?? 0)),
+            preprocessingAgreement: 1
         )
     }
 
@@ -569,7 +657,7 @@ enum OCRCandidateRanker {
         return usefulCharacters.count >= 4 ? 0.2 : 0
     }
 
-    nonisolated private static func canonicalValue(kind: OCRFieldKind, text: String) -> String {
+    nonisolated static func canonicalValue(kind: OCRFieldKind, text: String) -> String {
         switch kind {
         case .clipName:
             return OCRFieldParser.clipName(from: text) ?? normalizedWhitespace(text)
@@ -594,11 +682,118 @@ enum OCRCandidateRanker {
         }
     }
 
+    nonisolated static func characterCorrectionCount(kind: OCRFieldKind, text: String) -> Int {
+        let rawCharacters = Array(text.uppercased().filter { $0.isLetter || $0.isNumber })
+        let canonicalCharacters = Array(canonicalValue(kind: kind, text: text).filter { $0.isLetter || $0.isNumber })
+        let sharedCount = min(rawCharacters.count, canonicalCharacters.count)
+        let substitutions = zip(rawCharacters.prefix(sharedCount), canonicalCharacters.prefix(sharedCount))
+            .filter { $0 != $1 }
+            .count
+        return substitutions + abs(rawCharacters.count - canonicalCharacters.count)
+    }
+
     nonisolated private static func normalizedWhitespace(_ text: String) -> String {
         text
             .uppercased()
             .split(whereSeparator: \.isWhitespace)
             .joined(separator: " ")
+    }
+}
+
+enum OCRPreprocessingResolver {
+    nonisolated static func shouldUseFallback(
+        _ candidate: RecognizedTextCandidate,
+        kind: OCRFieldKind
+    ) -> Bool {
+        candidate.text.isEmpty
+            || candidate.formatScore < 1
+            || candidate.confidence < 0.78
+            || candidate.candidateMargin < 0.05
+            || usesCharacterCorrection(kind: kind, text: candidate.text)
+    }
+
+    nonisolated static func resolve(
+        kind: OCRFieldKind,
+        candidates: [RecognizedTextCandidate]
+    ) -> RecognizedTextCandidate {
+        let nonEmpty = candidates.filter { !$0.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+        guard let primary = nonEmpty.first else {
+            return OCRCandidateRanker.bestCandidate(for: kind, candidates: [])
+        }
+
+        let grouped = Dictionary(grouping: nonEmpty) {
+            OCRCandidateRanker.canonicalValue(kind: kind, text: $0.text)
+        }
+        let primaryCanonical = OCRCandidateRanker.canonicalValue(kind: kind, text: primary.text)
+        let selectedCanonical: String
+
+        if primary.formatScore == 1 {
+            let primaryCorrectionCount = OCRCandidateRanker.characterCorrectionCount(
+                kind: kind,
+                text: primary.text
+            )
+            let cleanerGroups = grouped.filter { _, values in
+                values.contains {
+                    OCRCandidateRanker.characterCorrectionCount(kind: kind, text: $0.text) < primaryCorrectionCount
+                }
+            }
+
+            selectedCanonical = cleanerGroups
+                .max(by: isWeakerGroup(kind: kind))?
+                .key
+                ?? primaryCanonical
+        } else {
+            selectedCanonical = grouped.max(by: isWeakerGroup(kind: kind))?.key ?? primaryCanonical
+        }
+
+        let selectedGroup = grouped[selectedCanonical] ?? [primary]
+        let selected = selectedGroup.min { lhs, rhs in
+            let lhsCorrectionCount = OCRCandidateRanker.characterCorrectionCount(kind: kind, text: lhs.text)
+            let rhsCorrectionCount = OCRCandidateRanker.characterCorrectionCount(kind: kind, text: rhs.text)
+            if lhsCorrectionCount != rhsCorrectionCount {
+                return lhsCorrectionCount < rhsCorrectionCount
+            }
+            return lhs.confidence > rhs.confidence
+        } ?? primary
+        let agreementCount = nonEmpty.filter {
+            OCRCandidateRanker.canonicalValue(kind: kind, text: $0.text) == selectedCanonical
+        }.count
+
+        return RecognizedTextCandidate(
+            text: selected.text,
+            confidence: selected.confidence,
+            formatScore: selected.formatScore,
+            candidateMargin: selected.candidateMargin,
+            preprocessingAgreement: Double(agreementCount) / Double(nonEmpty.count)
+        )
+    }
+
+    nonisolated private static func isWeakerGroup(
+        kind: OCRFieldKind
+    ) -> ((key: String, value: [RecognizedTextCandidate]), (key: String, value: [RecognizedTextCandidate])) -> Bool {
+        { lhs, rhs in
+            if lhs.value.count != rhs.value.count {
+                return lhs.value.count < rhs.value.count
+            }
+
+            let lhsBest = lhs.value.map {
+                OCRCandidateRanker.characterCorrectionCount(kind: kind, text: $0.text)
+            }.min() ?? Int.max
+            let rhsBest = rhs.value.map {
+                OCRCandidateRanker.characterCorrectionCount(kind: kind, text: $0.text)
+            }.min() ?? Int.max
+            if lhsBest != rhsBest {
+                return lhsBest > rhsBest
+            }
+
+            let lhsConfidence = lhs.value.map(\.confidence).reduce(0, +) / Double(lhs.value.count)
+            let rhsConfidence = rhs.value.map(\.confidence).reduce(0, +) / Double(rhs.value.count)
+            return lhsConfidence < rhsConfidence
+        }
+    }
+
+    nonisolated private static func usesCharacterCorrection(kind: OCRFieldKind, text: String) -> Bool {
+        OCRCandidateRanker.characterCorrectionCount(kind: kind, text: text) > 0
     }
 }
 

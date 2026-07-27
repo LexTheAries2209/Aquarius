@@ -15,6 +15,7 @@ struct RunAsyncAnalyzerSmoke {
     static func main() async throws {
         try verifyParserRegressions()
         try verifyCandidateRanking()
+        try verifyAdaptivePreprocessing()
 
         let projectRoot = URL(fileURLWithPath: FileManager.default.currentDirectoryPath, isDirectory: true)
         let samplesDirectory = projectRoot
@@ -144,6 +145,65 @@ struct RunAsyncAnalyzerSmoke {
             throw SmokeError.failedFiles(failures)
         }
         print("OCR candidate ranking cases passed")
+    }
+
+    private static func verifyAdaptivePreprocessing() throws {
+        let corrected = RecognizedTextCandidate(
+            text: "A00GC00T",
+            confidence: 1,
+            formatScore: 1,
+            candidateMargin: 0.4,
+            preprocessingAgreement: 1
+        )
+        let clean = RecognizedTextCandidate(
+            text: "A006C001",
+            confidence: 1,
+            formatScore: 1,
+            candidateMargin: 0.4,
+            preprocessingAgreement: 1
+        )
+        let qtakePrimary = RecognizedTextCandidate(
+            text: "A001_C003_0703AB",
+            confidence: 0.72,
+            formatScore: 1,
+            candidateMargin: 0.04,
+            preprocessingAgreement: 1
+        )
+        let qtakeAlternative = RecognizedTextCandidate(
+            text: "A001_C003_O703AB",
+            confidence: 0.98,
+            formatScore: 1,
+            candidateMargin: 0.30,
+            preprocessingAgreement: 1
+        )
+        let qtakeResolved = OCRPreprocessingResolver.resolve(
+            kind: .clipName,
+            candidates: [qtakePrimary, qtakeAlternative, qtakeAlternative]
+        )
+        let compactResolved = OCRPreprocessingResolver.resolve(
+            kind: .clipName,
+            candidates: [corrected, clean, clean]
+        )
+
+        let failures = [
+            OCRPreprocessingResolver.shouldUseFallback(corrected, kind: .clipName)
+                ? nil
+                : "character-corrected file name should trigger preprocessing fallback",
+            OCRPreprocessingResolver.shouldUseFallback(clean, kind: .clipName)
+                ? "clean file name should remain on the primary preprocessing path"
+                : nil,
+            qtakeResolved.text == qtakePrimary.text
+                ? nil
+                : "equally valid preprocessing variants should preserve primary QTake text, got \(qtakeResolved.text)",
+            compactResolved.text == clean.text
+                ? nil
+                : "clean compact file name should beat a character-corrected variant, got \(compactResolved.text)"
+        ].compactMap { $0 }
+
+        if !failures.isEmpty {
+            throw SmokeError.failedFiles(failures)
+        }
+        print("Adaptive OCR preprocessing cases passed")
     }
 }
 
