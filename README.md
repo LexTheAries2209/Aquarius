@@ -53,7 +53,8 @@ V1.0.3 的中文发布说明见 [docs/releases/v1.0.3.zh-CN.md](docs/releases/v1
 
 ### 系统要求
 
-- 使用发布版：macOS `13.0` 或更新版本，不需要 Xcode。
+- 当前源码与后续发布版：Apple silicon（M 系列芯片），macOS `13.0` 或更新版本；使用发布版不需要 Xcode。
+- 历史 V1.0.3 下载包仍是同时支持 Apple silicon 和 Intel 的 universal 构建；这一兼容范围不代表后续版本。
 - 从源码构建：需要 Xcode，当前工程使用 SwiftUI / AVFoundation / CoreImage / CoreMedia / Vision。
 - 当前源码工程配置：
   - Swift `5.0`
@@ -151,6 +152,7 @@ Avid ALE 导出会生成 tab 分隔的三段式文本：`Heading`、`Column`、`
 - 除 DaVinci Resolve CSV 外，新增 XML / ALE 元数据导出尚未在对应工作软件中完成实际导入验证。
 - 直接写入源文件仅适用于已有可写 QuickTime TMCD 轨道的 MOV / QuickTime 文件。
 - 工具在本机运行，不需要联网。
+- OCR 基准素材的准备和标注要求见 [docs/OCR_BENCHMARK_SAMPLE_CONTRACT.md](docs/OCR_BENCHMARK_SAMPLE_CONTRACT.md)。
 
 ---
 
@@ -196,7 +198,8 @@ Common use cases:
 
 ### Requirements
 
-- Release build: macOS `13.0` or later; Xcode is not required.
+- Current source and future releases: Apple silicon (M-series), macOS `13.0` or later; Xcode is not required for release builds.
+- The historical V1.0.3 download remains a universal Apple silicon and Intel build; that compatibility does not apply to future releases.
 - Source build: Xcode with SwiftUI, AVFoundation, CoreImage, CoreMedia, and Vision support.
 - Current source project settings:
   - Swift `5.0`
@@ -283,6 +286,7 @@ The code may still open other containers through AVFoundation, but those formats
 ### Current Limitations
 
 - OCR quality depends on readable burned-in text and accurate ROI placement.
+- See [docs/OCR_BENCHMARK_SAMPLE_CONTRACT.md](docs/OCR_BENCHMARK_SAMPLE_CONTRACT.md) for the benchmark media and ground-truth contract.
 - Different QTake layouts normally need separate ROI presets.
 - Automatic source TC inference only tests 24, 25, and 30; 23.976 and 29.97 must be selected manually.
 - 23.976 uses 24-frame labels and 24000/1001 counting for current TC and CSV output.
