@@ -819,11 +819,18 @@ private enum OCRConsensusResolver {
     }
 }
 
-private enum OCRFieldParser {
+enum OCRFieldParser {
     nonisolated static func clipName(from rawText: String) -> String? {
         let upper = rawText
             .uppercased()
             .replacingOccurrences(of: "\n", with: " ")
+
+        if let compactCameraClip = firstMatch(
+            in: upper,
+            pattern: #"\b[A-Z0-9]{8}\b"#
+        ).flatMap(normalizedCompactCameraClip) {
+            return compactCameraClip
+        }
 
         if let separated = firstMatch(
             in: upper,
@@ -989,6 +996,75 @@ private enum OCRFieldParser {
         }
 
         return "\(first)\(String(digits))"
+    }
+
+    nonisolated private static func normalizedCompactCameraClip(_ token: String) -> String? {
+        let characters = Array(token.uppercased())
+        guard characters.count == 8,
+              let firstLetter = normalizedLetter(characters[0]),
+              let secondLetter = normalizedLetter(characters[4]) else {
+            return nil
+        }
+
+        let digitIndexes = [1, 2, 3, 5, 6, 7]
+        var normalized = characters
+        normalized[0] = firstLetter
+        normalized[4] = secondLetter
+
+        for index in digitIndexes {
+            guard let digit = normalizedDigit(characters[index]) else {
+                return nil
+            }
+            normalized[index] = digit
+        }
+
+        return String(normalized)
+    }
+
+    nonisolated private static func normalizedLetter(_ character: Character) -> Character? {
+        if character.isLetter {
+            return character
+        }
+
+        switch character {
+        case "0":
+            return "O"
+        case "1":
+            return "I"
+        case "2":
+            return "Z"
+        case "5":
+            return "S"
+        case "6":
+            return "G"
+        case "8":
+            return "B"
+        default:
+            return nil
+        }
+    }
+
+    nonisolated private static func normalizedDigit(_ character: Character) -> Character? {
+        if character.isNumber {
+            return character
+        }
+
+        switch character {
+        case "O":
+            return "0"
+        case "I", "L", "T":
+            return "1"
+        case "Z":
+            return "2"
+        case "S":
+            return "5"
+        case "G":
+            return "6"
+        case "B":
+            return "8"
+        default:
+            return nil
+        }
     }
 
     nonisolated private static func normalizedARRIRollToken(_ token: String) -> String? {

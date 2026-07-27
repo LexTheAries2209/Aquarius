@@ -13,6 +13,8 @@ private struct SmokeCase {
 @main
 struct RunAsyncAnalyzerSmoke {
     static func main() async throws {
+        try verifyParserRegressions()
+
         let projectRoot = URL(fileURLWithPath: FileManager.default.currentDirectoryPath, isDirectory: true)
         let samplesDirectory = projectRoot
             .appendingPathComponent("Aquarius", isDirectory: true)
@@ -89,6 +91,27 @@ struct RunAsyncAnalyzerSmoke {
         if !failures.isEmpty {
             throw SmokeError.failedFiles(failures)
         }
+    }
+
+    private static func verifyParserRegressions() throws {
+        let cases = [
+            (raw: "A006C001", expected: "A006C001"),
+            (raw: "A00GC00T", expected: "A006C001"),
+            (raw: "A001_C003_0703AB", expected: "A001_C003_0703AB"),
+            (raw: "D009 C001 NIGHT", expected: "D009_C001_NIGHT")
+        ]
+
+        let failures = cases.compactMap { testCase -> String? in
+            let actual = OCRFieldParser.clipName(from: testCase.raw)
+            return actual == testCase.expected
+                ? nil
+                : "parser input \(testCase.raw): expected \(testCase.expected), got \(actual ?? "nil")"
+        }
+
+        if !failures.isEmpty {
+            throw SmokeError.failedFiles(failures)
+        }
+        print("OCR parser regression cases passed")
     }
 }
 
