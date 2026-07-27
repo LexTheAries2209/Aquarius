@@ -16,6 +16,7 @@ struct RunAsyncAnalyzerSmoke {
         try verifyParserRegressions()
         try verifyCandidateRanking()
         try verifyAdaptivePreprocessing()
+        try verifyAdjacentTimecodeSequences()
 
         let projectRoot = URL(fileURLWithPath: FileManager.default.currentDirectoryPath, isDirectory: true)
         let samplesDirectory = projectRoot
@@ -204,6 +205,109 @@ struct RunAsyncAnalyzerSmoke {
             throw SmokeError.failedFiles(failures)
         }
         print("Adaptive OCR preprocessing cases passed")
+    }
+
+    private static func verifyAdjacentTimecodeSequences() throws {
+        let settings: [SourceTimecodeFrameRateSetting] = [
+            .fps23976,
+            .fps24,
+            .fps25,
+            .fps2997NDF,
+            .fps2997DF,
+            .fps30
+        ]
+        var failures: [String] = []
+
+        for setting in settings {
+            guard let fps = setting.fps else {
+                continue
+            }
+            let samples = makeTimecodeSequence(setting: setting, corruptNextFrame: false)
+            let valid = TimecodeSequenceValidator.validate(
+                samples: samples,
+                fps: fps,
+                playbackFrameRate: setting.playbackFrameRate,
+                isDropFrame: setting.isDropFrame
+            )
+            if valid.completeSequenceCount != 1
+                || valid.consistentSequenceCount != 1
+                || valid.validatedSampleIDs.count != 3 {
+                failures.append("\(setting.title) continuous sequence was not accepted")
+            }
+
+            let corrupted = TimecodeSequenceValidator.validate(
+                samples: makeTimecodeSequence(setting: setting, corruptNextFrame: true),
+                fps: fps,
+                playbackFrameRate: setting.playbackFrameRate,
+                isDropFrame: setting.isDropFrame
+            )
+            if corrupted.completeSequenceCount != 1
+                || corrupted.consistentSequenceCount != 0
+                || !corrupted.validatedSampleIDs.isEmpty {
+                failures.append("\(setting.title) discontinuous sequence was not rejected")
+            }
+        }
+
+        if !failures.isEmpty {
+            throw SmokeError.failedFiles(failures)
+        }
+        print("Adjacent-frame timecode cases passed for 23.976/24/25/29.97 NDF/DF/30 fps")
+    }
+
+    private static func makeTimecodeSequence(
+        setting: SourceTimecodeFrameRateSetting,
+        corruptNextFrame: Bool
+    ) -> [OCRSample] {
+        let fps = setting.fps ?? 24
+        let sequenceID = UUID()
+        let region = OCRRegion(
+            id: "timecode-sequence",
+            label: "时间码",
+            kind: .timecode,
+            normalizedRect: .zero
+        )
+        let centerVideoFrame = fps
+        let baseTimecode = Timecode(
+            hours: 10,
+            minutes: 0,
+            seconds: 0,
+            frames: 0,
+            fps: fps,
+            playbackFrameRate: setting.playbackFrameRate,
+            isDropFrame: setting.isDropFrame
+        )
+        let timebase: (value: Int64, timescale: Int32)
+        switch setting {
+        case .fps23976:
+            timebase = (1_001, 24_000)
+        case .fps2997NDF, .fps2997DF:
+            timebase = (1_001, 30_000)
+        default:
+            timebase = (1, Int32(fps))
+        }
+
+        return [-1, 0, 1].map { position in
+            let videoFrame = centerVideoFrame + position
+            let timestampValue = Int64(videoFrame) * timebase.value
+            let timecodeOffset = position == 1 && corruptNextFrame ? position + 1 : position
+            let timecode = Timecode.from(
+                totalFrames: baseTimecode.totalFrames + timecodeOffset,
+                fps: fps,
+                playbackFrameRate: setting.playbackFrameRate,
+                isDropFrame: setting.isDropFrame
+            )
+            return OCRSample(
+                region: region,
+                requestedSeconds: Double(timestampValue) / Double(timebase.timescale),
+                actualSeconds: Double(timestampValue) / Double(timebase.timescale),
+                rawText: timecode.description,
+                confidence: 1,
+                actualTimeValue: timestampValue,
+                actualTimeTimescale: timebase.timescale,
+                timecodeSequenceID: sequenceID,
+                timecodeSequencePosition: position
+            )
+        }
     }
 }
 

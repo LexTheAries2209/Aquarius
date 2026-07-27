@@ -79,6 +79,10 @@ struct OCRSample: Identifiable, Sendable {
     let actualSeconds: Double
     let rawText: String
     let confidence: Double
+    let actualTimeValue: Int64?
+    let actualTimeTimescale: Int32?
+    let timecodeSequenceID: UUID?
+    let timecodeSequencePosition: Int?
     let timecodeFrameOffset: Int?
     let timecodeSampleStatus: TimecodeSampleStatus
 
@@ -89,6 +93,10 @@ struct OCRSample: Identifiable, Sendable {
         actualSeconds: Double,
         rawText: String,
         confidence: Double,
+        actualTimeValue: Int64? = nil,
+        actualTimeTimescale: Int32? = nil,
+        timecodeSequenceID: UUID? = nil,
+        timecodeSequencePosition: Int? = nil,
         timecodeFrameOffset: Int? = nil,
         timecodeSampleStatus: TimecodeSampleStatus = .notApplicable
     ) {
@@ -98,6 +106,10 @@ struct OCRSample: Identifiable, Sendable {
         self.actualSeconds = actualSeconds
         self.rawText = rawText
         self.confidence = confidence
+        self.actualTimeValue = actualTimeValue
+        self.actualTimeTimescale = actualTimeTimescale
+        self.timecodeSequenceID = timecodeSequenceID
+        self.timecodeSequencePosition = timecodeSequencePosition
         self.timecodeFrameOffset = timecodeFrameOffset
         self.timecodeSampleStatus = timecodeSampleStatus
     }

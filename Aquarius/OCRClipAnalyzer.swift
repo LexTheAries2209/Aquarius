@@ -60,7 +60,9 @@ struct OCRClipAnalyzer {
         var samples = await collectSamples(
             at: sampleTimes,
             generator: generator,
-            regions: regions
+            regions: regions,
+            videoFrameRate: videoFrameRate,
+            duration: duration
         )
         var result = OCRConsensusResolver.resolve(
             videoName: url.lastPathComponent,
@@ -84,7 +86,9 @@ struct OCRClipAnalyzer {
                 contentsOf: await collectSamples(
                     at: nearbySampleTimes,
                     generator: generator,
-                    regions: regions
+                    regions: regions,
+                    videoFrameRate: videoFrameRate,
+                    duration: duration
                 )
             )
             result = OCRConsensusResolver.resolve(
@@ -103,35 +107,93 @@ struct OCRClipAnalyzer {
     nonisolated private func collectSamples(
         at sampleTimes: [Double],
         generator: AVAssetImageGenerator,
-        regions: [OCRRegion]
+        regions: [OCRRegion],
+        videoFrameRate: Double,
+        duration: Double
     ) async -> [OCRSample] {
         var samples: [OCRSample] = []
+        let timecodeRegions = regions.filter { $0.kind == .timecode }
+        let frameDuration = rationalFrameDuration(for: videoFrameRate)
 
         for seconds in sampleTimes {
             let requestedTime = CMTime(seconds: seconds, preferredTimescale: 600)
             guard let frameResult = try? await generator.ocrTimecodeCGImage(at: requestedTime) else {
                 continue
             }
-            let frame = frameResult.image
-            let actualSeconds = safeDuration(frameResult.actualTime.seconds, fallback: seconds)
+            let sequenceID = timecodeRegions.isEmpty ? nil : UUID()
 
             for region in regions {
-                guard let candidate = recognize(frame, in: region) else {
+                if let sample = makeSample(
+                    from: frameResult,
+                    requestedSeconds: seconds,
+                    region: region,
+                    sequenceID: region.kind == .timecode ? sequenceID : nil,
+                    sequencePosition: region.kind == .timecode ? 0 : nil
+                ) {
+                    samples.append(sample)
+                }
+            }
+
+            for position in [-1, 1] where !timecodeRegions.isEmpty {
+                let adjacentTime = CMTimeAdd(
+                    frameResult.actualTime,
+                    CMTimeMultiply(frameDuration, multiplier: Int32(position))
+                )
+                let adjacentSeconds = adjacentTime.seconds
+                guard adjacentSeconds >= 0, adjacentSeconds < duration,
+                      let adjacentFrame = try? await generator.ocrTimecodeCGImage(at: adjacentTime) else {
                     continue
                 }
-                samples.append(
-                    OCRSample(
+
+                for region in timecodeRegions {
+                    if let sample = makeSample(
+                        from: adjacentFrame,
+                        requestedSeconds: adjacentSeconds,
                         region: region,
-                        requestedSeconds: seconds,
-                        actualSeconds: actualSeconds,
-                        rawText: candidate.text,
-                        confidence: candidate.confidence
-                    )
-                )
+                        sequenceID: sequenceID,
+                        sequencePosition: position
+                    ) {
+                        samples.append(sample)
+                    }
+                }
             }
         }
 
         return samples
+    }
+
+    nonisolated private func makeSample(
+        from frameResult: (image: CGImage, actualTime: CMTime),
+        requestedSeconds: Double,
+        region: OCRRegion,
+        sequenceID: UUID?,
+        sequencePosition: Int?
+    ) -> OCRSample? {
+        guard let candidate = recognize(frameResult.image, in: region) else {
+            return nil
+        }
+
+        return OCRSample(
+            region: region,
+            requestedSeconds: requestedSeconds,
+            actualSeconds: safeDuration(frameResult.actualTime.seconds, fallback: requestedSeconds),
+            rawText: candidate.text,
+            confidence: candidate.confidence,
+            actualTimeValue: frameResult.actualTime.value,
+            actualTimeTimescale: frameResult.actualTime.timescale,
+            timecodeSequenceID: sequenceID,
+            timecodeSequencePosition: sequencePosition
+        )
+    }
+
+    nonisolated private func rationalFrameDuration(for frameRate: Double) -> CMTime {
+        if abs(frameRate - 24_000.0 / 1_001.0) < 0.05 {
+            return CMTime(value: 1_001, timescale: 24_000)
+        }
+        if abs(frameRate - 30_000.0 / 1_001.0) < 0.05 {
+            return CMTime(value: 1_001, timescale: 30_000)
+        }
+        return CMTime(value: 1, timescale: Int32(max(1, round(frameRate))))
     }
 
     nonisolated private func recognize(_ frame: CGImage, in region: OCRRegion) -> RecognizedTextCandidate? {
@@ -797,6 +859,137 @@ enum OCRPreprocessingResolver {
     }
 }
 
+struct TimecodeSequenceValidation: Sendable {
+    let completeSequenceCount: Int
+    let consistentSequenceCount: Int
+    let validatedSampleIDs: Set<UUID>
+}
+
+enum TimecodeSequenceValidator {
+    nonisolated static func validate(
+        samples: [OCRSample],
+        fps: Int,
+        playbackFrameRate: Double,
+        isDropFrame: Bool
+    ) -> TimecodeSequenceValidation {
+        let grouped = Dictionary(grouping: samples.compactMap { sample -> (UUID, OCRSample)? in
+            guard let sequenceID = sample.timecodeSequenceID,
+                  sample.timecodeSequencePosition != nil else {
+                return nil
+            }
+            return (sequenceID, sample)
+        }, by: { $0.0 })
+        var completeSequenceCount = 0
+        var consistentSequenceCount = 0
+        var validatedSampleIDs = Set<UUID>()
+
+        for entries in grouped.values {
+            let samplesByPosition = entries.reduce(into: [Int: OCRSample]()) { result, entry in
+                guard let position = entry.1.timecodeSequencePosition,
+                      result[position] == nil else {
+                    return
+                }
+                result[position] = entry.1
+            }
+            guard let previous = samplesByPosition[-1],
+                  let current = samplesByPosition[0],
+                  let next = samplesByPosition[1] else {
+                continue
+            }
+            completeSequenceCount += 1
+
+            let orderedSamples = [previous, current, next]
+            let parsed = orderedSamples.compactMap { sample in
+                OCRFieldParser.timecode(
+                    from: sample.rawText,
+                    fps: fps,
+                    playbackFrameRate: playbackFrameRate,
+                    isDropFrame: isDropFrame
+                )
+            }
+            guard parsed.count == orderedSamples.count,
+                  isContinuous(
+                    samples: orderedSamples,
+                    timecodes: parsed,
+                    fps: fps,
+                    playbackFrameRate: playbackFrameRate,
+                    isDropFrame: isDropFrame
+                  ) else {
+                continue
+            }
+
+            consistentSequenceCount += 1
+            validatedSampleIDs.formUnion(orderedSamples.map(\.id))
+        }
+
+        return TimecodeSequenceValidation(
+            completeSequenceCount: completeSequenceCount,
+            consistentSequenceCount: consistentSequenceCount,
+            validatedSampleIDs: validatedSampleIDs
+        )
+    }
+
+    nonisolated private static func isContinuous(
+        samples: [OCRSample],
+        timecodes: [Timecode],
+        fps: Int,
+        playbackFrameRate: Double,
+        isDropFrame: Bool
+    ) -> Bool {
+        for index in 1..<samples.count {
+            guard let earlierTime = actualTime(for: samples[index - 1]),
+                  let laterTime = actualTime(for: samples[index]) else {
+                return false
+            }
+            let elapsedSeconds = CMTimeSubtract(laterTime, earlierTime).seconds
+            let expectedFrameDelta = Int((elapsedSeconds * playbackFrameRate).rounded())
+            let actualFrameDelta = forwardFrameDelta(
+                from: timecodes[index - 1].totalFrames,
+                to: timecodes[index].totalFrames,
+                framesPerDay: framesPerDay(fps: fps, playbackFrameRate: playbackFrameRate, isDropFrame: isDropFrame)
+            )
+            guard expectedFrameDelta > 0, actualFrameDelta == expectedFrameDelta else {
+                return false
+            }
+        }
+        return true
+    }
+
+    nonisolated private static func actualTime(for sample: OCRSample) -> CMTime? {
+        guard let value = sample.actualTimeValue,
+              let timescale = sample.actualTimeTimescale,
+              timescale > 0 else {
+            return nil
+        }
+        return CMTime(value: value, timescale: timescale)
+    }
+
+    nonisolated private static func framesPerDay(
+        fps: Int,
+        playbackFrameRate: Double,
+        isDropFrame: Bool
+    ) -> Int {
+        Timecode(
+            hours: 23,
+            minutes: 59,
+            seconds: 59,
+            frames: fps - 1,
+            fps: fps,
+            playbackFrameRate: playbackFrameRate,
+            isDropFrame: isDropFrame
+        ).totalFrames + 1
+    }
+
+    nonisolated private static func forwardFrameDelta(
+        from earlier: Int,
+        to later: Int,
+        framesPerDay: Int
+    ) -> Int {
+        let delta = later - earlier
+        return delta >= 0 ? delta : delta + framesPerDay
+    }
+}
+
 private enum OCRConsensusResolver {
     nonisolated static func resolve(
         videoName: String,
@@ -979,7 +1172,7 @@ private enum OCRConsensusResolver {
         let nonEmptyTimecodeSampleCount = samples
             .filter { !$0.rawText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
             .count
-        let readings: [TimecodeReading] = samples.compactMap { sample in
+        let parsedReadings: [TimecodeReading] = samples.compactMap { sample in
             guard let timecode = OCRFieldParser.timecode(
                 from: sample.rawText,
                 fps: fps,
@@ -988,9 +1181,21 @@ private enum OCRConsensusResolver {
             ) else {
                 return nil
             }
-            let startFrame = timecode.totalFrames - Int(round(sample.actualSeconds * playbackFrameRate))
+            let startFrame = timecode.totalFrames - mediaFrameOffset(
+                for: sample,
+                playbackFrameRate: playbackFrameRate
+            )
             return TimecodeReading(sample: sample, timecode: timecode, startFrame: startFrame)
         }
+        let sequenceValidation = TimecodeSequenceValidator.validate(
+            samples: samples,
+            fps: fps,
+            playbackFrameRate: playbackFrameRate,
+            isDropFrame: isDropFrame
+        )
+        let readings = sequenceValidation.completeSequenceCount > 0
+            ? parsedReadings.filter { sequenceValidation.validatedSampleIDs.contains($0.sample.id) }
+            : parsedReadings
         let invalidCount = max(0, nonEmptyTimecodeSampleCount - readings.count)
         let bestFrameCluster = bestFrameCluster(readings.map(\.startFrame))
         let bestStartFrame = bestFrameCluster?.frame
@@ -1016,7 +1221,8 @@ private enum OCRConsensusResolver {
             invalidSampleCount: invalidCount,
             maxDeviationFrames: maxDeviation,
             driftFramesPerMinute: drift,
-            status: status
+            status: status,
+            sequenceValidation: sequenceValidation
         )
 
         let diagnostics = TimecodeDiagnostics(
@@ -1101,7 +1307,8 @@ private enum OCRConsensusResolver {
         invalidSampleCount: Int,
         maxDeviationFrames: Int?,
         driftFramesPerMinute: Double?,
-        status: TimecodeConsistencyStatus
+        status: TimecodeConsistencyStatus,
+        sequenceValidation: TimecodeSequenceValidation
     ) -> [String] {
         var notes: [String] = []
 
@@ -1121,6 +1328,12 @@ private enum OCRConsensusResolver {
         if status == .highRisk, validSampleCount == 0, !samples.isEmpty {
             notes.append("未能用 \(fps)fps 解析稳定时间码")
         }
+        if sequenceValidation.completeSequenceCount > sequenceValidation.consistentSequenceCount {
+            notes.append("相邻帧时间码不连续，相关候选已排除")
+        }
+        if sequenceValidation.completeSequenceCount == 0, !samples.isEmpty {
+            notes.append("相邻帧样本不足，时间码序列未经三帧验证")
+        }
 
         return notes
     }
@@ -1139,6 +1352,18 @@ private enum OCRConsensusResolver {
         }
 
         return abs(Double(last.startFrame - first.startFrame)) / minutes
+    }
+
+    nonisolated private static func mediaFrameOffset(
+        for sample: OCRSample,
+        playbackFrameRate: Double
+    ) -> Int {
+        guard let value = sample.actualTimeValue,
+              let timescale = sample.actualTimeTimescale,
+              timescale > 0 else {
+            return Int((sample.actualSeconds * playbackFrameRate).rounded())
+        }
+        return Int((Double(value) * playbackFrameRate / Double(timescale)).rounded())
     }
 
     nonisolated private static func annotateSamples(
@@ -1191,6 +1416,10 @@ private enum OCRConsensusResolver {
             actualSeconds: sample.actualSeconds,
             rawText: sample.rawText,
             confidence: sample.confidence,
+            actualTimeValue: sample.actualTimeValue,
+            actualTimeTimescale: sample.actualTimeTimescale,
+            timecodeSequenceID: sample.timecodeSequenceID,
+            timecodeSequencePosition: sample.timecodeSequencePosition,
             timecodeFrameOffset: offset,
             timecodeSampleStatus: status
         )
