@@ -336,42 +336,51 @@ private struct ROIImageProcessor {
     }
 }
 
-private struct RecognizedTextCandidate {
+struct OCRTextCandidate: Sendable {
     let text: String
     let confidence: Double
 }
 
-private struct VisionTextRecognizer {
+struct RecognizedTextCandidate: Sendable {
+    let text: String
+    let confidence: Double
+    let formatScore: Double
+    let candidateMargin: Double
+}
+
+protocol OCRTextRecognizing {
+    nonisolated func recognize(_ image: CGImage, kind: OCRFieldKind) throws -> RecognizedTextCandidate
+}
+
+struct VisionTextRecognizer: OCRTextRecognizing {
+    private struct PartialLineCandidate {
+        let text: String
+        let confidenceTotal: Double
+        let count: Int
+
+        nonisolated var averageConfidence: Double {
+            confidenceTotal / Double(max(1, count))
+        }
+    }
+
     nonisolated init() {}
 
     nonisolated func recognize(_ image: CGImage, kind: OCRFieldKind) throws -> RecognizedTextCandidate {
         let request = VNRecognizeTextRequest()
         request.recognitionLevel = .accurate
         request.recognitionLanguages = ["en-US"]
-        request.usesLanguageCorrection = false
+        request.usesLanguageCorrection = kind == .roll
         request.customWords = customWords(for: kind)
         request.minimumTextHeight = 0.02
 
         let handler = VNImageRequestHandler(cgImage: image, orientation: .up)
         try handler.perform([request])
 
-        let observations = (request.results ?? [])
-            .sorted { $0.boundingBox.maxY > $1.boundingBox.maxY }
+        let observations = request.results ?? []
+        let candidates = lineCandidates(from: observations)
+            + legacyCombinedCandidate(from: observations)
 
-        let candidates = observations.compactMap { observation in
-            observation.topCandidates(1).first
-        }
-
-        let text = candidates
-            .map(\.string)
-            .joined(separator: "\n")
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-
-        let confidence = candidates.isEmpty
-            ? 0
-            : Double(candidates.map(\.confidence).reduce(0, +)) / Double(candidates.count)
-
-        return RecognizedTextCandidate(text: text, confidence: confidence)
+        return OCRCandidateRanker.bestCandidate(for: kind, candidates: candidates)
     }
 
     nonisolated private func customWords(for kind: OCRFieldKind) -> [String] {
@@ -383,6 +392,213 @@ private struct VisionTextRecognizer {
         case .timecode:
             ["10:00:00:00", "00:00:00:00"]
         }
+    }
+
+    nonisolated private func lineCandidates(
+        from observations: [VNRecognizedTextObservation]
+    ) -> [OCRTextCandidate] {
+        var candidates: [OCRTextCandidate] = []
+
+        for observations in observationLines(from: observations) {
+            var partials = [PartialLineCandidate(text: "", confidenceTotal: 0, count: 0)]
+
+            for observation in observations {
+                let alternatives = observation.topCandidates(5)
+                guard !alternatives.isEmpty else {
+                    continue
+                }
+
+                var expanded: [PartialLineCandidate] = []
+                for partial in partials {
+                    for alternative in alternatives {
+                        expanded.append(
+                            PartialLineCandidate(
+                                text: partial.text.isEmpty
+                                    ? alternative.string
+                                    : "\(partial.text) \(alternative.string)",
+                                confidenceTotal: partial.confidenceTotal + Double(alternative.confidence),
+                                count: partial.count + 1
+                            )
+                        )
+                    }
+                }
+
+                let sorted = expanded.sorted { $0.averageConfidence > $1.averageConfidence }
+                partials = Array(sorted.prefix(20))
+            }
+
+            candidates.append(contentsOf: partials.compactMap { partial in
+                guard partial.count > 0 else {
+                    return nil
+                }
+                return OCRTextCandidate(
+                    text: partial.text,
+                    confidence: partial.averageConfidence
+                )
+            })
+        }
+
+        return candidates
+    }
+
+    nonisolated private func legacyCombinedCandidate(
+        from observations: [VNRecognizedTextObservation]
+    ) -> [OCRTextCandidate] {
+        let candidates = observations
+            .sorted { lhs, rhs in
+                if abs(lhs.boundingBox.midY - rhs.boundingBox.midY) < 0.02 {
+                    return lhs.boundingBox.minX < rhs.boundingBox.minX
+                }
+                return lhs.boundingBox.maxY > rhs.boundingBox.maxY
+            }
+            .compactMap { $0.topCandidates(1).first }
+        guard !candidates.isEmpty else {
+            return []
+        }
+
+        return [
+            OCRTextCandidate(
+                text: candidates.map(\.string).joined(separator: "\n"),
+                confidence: candidates.map { Double($0.confidence) }.reduce(0, +) / Double(candidates.count)
+            )
+        ]
+    }
+
+    nonisolated private func observationLines(
+        from observations: [VNRecognizedTextObservation]
+    ) -> [[VNRecognizedTextObservation]] {
+        let sorted = observations.sorted { lhs, rhs in
+            if abs(lhs.boundingBox.midY - rhs.boundingBox.midY) < 0.02 {
+                return lhs.boundingBox.minX < rhs.boundingBox.minX
+            }
+            return lhs.boundingBox.midY > rhs.boundingBox.midY
+        }
+        var lines: [[VNRecognizedTextObservation]] = []
+
+        for observation in sorted {
+            if let index = lines.firstIndex(where: { line in
+                guard let reference = line.first else {
+                    return false
+                }
+                let tolerance = max(reference.boundingBox.height, observation.boundingBox.height) * 0.55
+                return abs(reference.boundingBox.midY - observation.boundingBox.midY) <= tolerance
+            }) {
+                lines[index].append(observation)
+            } else {
+                lines.append([observation])
+            }
+        }
+
+        return lines.map { $0.sorted { $0.boundingBox.minX < $1.boundingBox.minX } }
+    }
+}
+
+enum OCRCandidateRanker {
+    nonisolated static func bestCandidate(
+        for kind: OCRFieldKind,
+        candidates: [OCRTextCandidate]
+    ) -> RecognizedTextCandidate {
+        let scored = bestCandidateForCanonicalValue(kind: kind, candidates: candidates)
+            .sorted { lhs, rhs in
+                if abs(lhs.score - rhs.score) < 0.0001 {
+                    return lhs.candidate.confidence > rhs.candidate.confidence
+                }
+                return lhs.score > rhs.score
+            }
+        guard let best = scored.first else {
+            return RecognizedTextCandidate(text: "", confidence: 0, formatScore: 0, candidateMargin: 0)
+        }
+
+        return RecognizedTextCandidate(
+            text: best.candidate.text,
+            confidence: best.candidate.confidence,
+            formatScore: best.formatScore,
+            candidateMargin: max(0, best.score - (scored.dropFirst().first?.score ?? 0))
+        )
+    }
+
+    nonisolated private static func bestCandidateForCanonicalValue(
+        kind: OCRFieldKind,
+        candidates: [OCRTextCandidate]
+    ) -> [(candidate: OCRTextCandidate, formatScore: Double, score: Double)] {
+        let scored = candidates.map { candidate in
+            let formatScore = fieldFormatScore(kind: kind, text: candidate.text)
+            return (
+                candidate: candidate,
+                formatScore: formatScore,
+                score: formatScore * 0.65 + candidate.confidence * 0.35
+            )
+        }
+
+        return Dictionary(grouping: scored, by: { canonicalValue(kind: kind, text: $0.candidate.text) })
+            .compactMap { _, values in
+                values.max { lhs, rhs in
+                    if abs(lhs.score - rhs.score) < 0.0001 {
+                        return lhs.candidate.confidence < rhs.candidate.confidence
+                    }
+                    return lhs.score < rhs.score
+                }
+            }
+    }
+
+    nonisolated static func fieldFormatScore(kind: OCRFieldKind, text: String) -> Double {
+        switch kind {
+        case .clipName:
+            if OCRFieldParser.clipName(from: text) != nil {
+                return 1
+            }
+        case .roll:
+            if OCRFieldParser.roll(from: text) != nil {
+                return 1
+            }
+        case .timecode:
+            if [24, 25, 30].contains(where: { fps in
+                OCRFieldParser.timecode(from: text, fps: fps) != nil
+                    || (fps == 30 && OCRFieldParser.timecode(
+                        from: text,
+                        fps: fps,
+                        playbackFrameRate: SourceTimecodeFrameRateSetting.fps2997DF.playbackFrameRate,
+                        isDropFrame: true
+                    ) != nil)
+            }) {
+                return 1
+            }
+        }
+
+        let usefulCharacters = text.filter { $0.isLetter || $0.isNumber || "_:;-".contains($0) }
+        return usefulCharacters.count >= 4 ? 0.2 : 0
+    }
+
+    nonisolated private static func canonicalValue(kind: OCRFieldKind, text: String) -> String {
+        switch kind {
+        case .clipName:
+            return OCRFieldParser.clipName(from: text) ?? normalizedWhitespace(text)
+        case .roll:
+            return OCRFieldParser.roll(from: text) ?? normalizedWhitespace(text)
+        case .timecode:
+            for fps in [24, 25, 30] {
+                if let value = OCRFieldParser.timecode(from: text, fps: fps) {
+                    return value.description
+                }
+                if fps == 30,
+                   let value = OCRFieldParser.timecode(
+                       from: text,
+                       fps: fps,
+                       playbackFrameRate: SourceTimecodeFrameRateSetting.fps2997DF.playbackFrameRate,
+                       isDropFrame: true
+                   ) {
+                    return value.description
+                }
+            }
+            return normalizedWhitespace(text)
+        }
+    }
+
+    nonisolated private static func normalizedWhitespace(_ text: String) -> String {
+        text
+            .uppercased()
+            .split(whereSeparator: \.isWhitespace)
+            .joined(separator: " ")
     }
 }
 

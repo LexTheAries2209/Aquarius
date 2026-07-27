@@ -14,6 +14,7 @@ private struct SmokeCase {
 struct RunAsyncAnalyzerSmoke {
     static func main() async throws {
         try verifyParserRegressions()
+        try verifyCandidateRanking()
 
         let projectRoot = URL(fileURLWithPath: FileManager.default.currentDirectoryPath, isDirectory: true)
         let samplesDirectory = projectRoot
@@ -112,6 +113,37 @@ struct RunAsyncAnalyzerSmoke {
             throw SmokeError.failedFiles(failures)
         }
         print("OCR parser regression cases passed")
+    }
+
+    private static func verifyCandidateRanking() throws {
+        let fileName = OCRCandidateRanker.bestCandidate(
+            for: .clipName,
+            candidates: [
+                OCRTextCandidate(text: "LOOK 05", confidence: 1.0),
+                OCRTextCandidate(text: "A006C001", confidence: 0.72)
+            ]
+        )
+        let timecode = OCRCandidateRanker.bestCandidate(
+            for: .timecode,
+            candidates: [
+                OCRTextCandidate(text: "10:04:02:99", confidence: 1.0),
+                OCRTextCandidate(text: "10:04:02:06", confidence: 0.70)
+            ]
+        )
+
+        let failures = [
+            OCRFieldParser.clipName(from: fileName.text) == "A006C001"
+                ? nil
+                : "candidate ranker selected invalid file name \(fileName.text)",
+            OCRFieldParser.timecode(from: timecode.text, fps: 24)?.description == "10:04:02:06"
+                ? nil
+                : "candidate ranker selected invalid timecode \(timecode.text)"
+        ].compactMap { $0 }
+
+        if !failures.isEmpty {
+            throw SmokeError.failedFiles(failures)
+        }
+        print("OCR candidate ranking cases passed")
     }
 }
 
