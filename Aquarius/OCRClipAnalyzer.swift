@@ -179,6 +179,13 @@ struct OCRClipAnalyzer {
             actualSeconds: safeDuration(frameResult.actualTime.seconds, fallback: requestedSeconds),
             rawText: candidate.text,
             confidence: candidate.confidence,
+            formatScore: candidate.formatScore,
+            candidateMargin: candidate.candidateMargin,
+            preprocessingAgreement: candidate.preprocessingAgreement,
+            characterCorrectionCount: OCRCandidateRanker.positionCorrectionCount(
+                kind: region.kind,
+                text: candidate.text
+            ),
             actualTimeValue: frameResult.actualTime.value,
             actualTimeTimescale: frameResult.actualTime.timescale,
             timecodeSequenceID: sequenceID,
@@ -754,6 +761,15 @@ enum OCRCandidateRanker {
         return substitutions + abs(rawCharacters.count - canonicalCharacters.count)
     }
 
+    nonisolated static func positionCorrectionCount(kind: OCRFieldKind, text: String) -> Int {
+        let rawCharacters = Array(text.uppercased().filter { $0.isLetter || $0.isNumber })
+        let canonicalCharacters = Array(canonicalValue(kind: kind, text: text).filter { $0.isLetter || $0.isNumber })
+        guard rawCharacters.count == canonicalCharacters.count else {
+            return 0
+        }
+        return zip(rawCharacters, canonicalCharacters).filter { $0 != $1 }.count
+    }
+
     nonisolated private static func normalizedWhitespace(_ text: String) -> String {
         text
             .uppercased()
@@ -990,6 +1006,55 @@ enum TimecodeSequenceValidator {
     }
 }
 
+struct OCRConfidenceEvidence: Sendable {
+    let fieldConsistency: Double
+    let visionConfidence: Double
+    let formatValidity: Double
+    let candidateSeparation: Double
+    let preprocessingAgreement: Double
+    let temporalConsistency: Double
+    let isLegal: Bool
+    let usesCharacterCorrection: Bool
+    let isTimecodeFrameRateUnique: Bool
+}
+
+struct OCRConfidenceAssessment: Sendable {
+    let confidence: Double
+    let requiresReview: Bool
+}
+
+enum OCRConfidenceCalibrator {
+    nonisolated static func assess(_ evidence: OCRConfidenceEvidence) -> OCRConfidenceAssessment {
+        let candidateSeparationScore = min(1, max(0, evidence.candidateSeparation / 0.20))
+        let weightedScore = clamp(evidence.fieldConsistency) * 0.40
+            + clamp(evidence.visionConfidence) * 0.15
+            + clamp(evidence.formatValidity) * 0.15
+            + candidateSeparationScore * 0.05
+            + clamp(evidence.preprocessingAgreement) * 0.15
+            + clamp(evidence.temporalConsistency) * 0.10
+        var confidence = clamp(weightedScore)
+        var requiresReview = false
+
+        if !evidence.isLegal {
+            confidence = min(confidence, 0.44)
+            requiresReview = true
+        }
+        if evidence.usesCharacterCorrection || !evidence.isTimecodeFrameRateUnique {
+            confidence = min(confidence, 0.79)
+            requiresReview = true
+        }
+
+        return OCRConfidenceAssessment(
+            confidence: confidence,
+            requiresReview: requiresReview
+        )
+    }
+
+    nonisolated private static func clamp(_ value: Double) -> Double {
+        min(1, max(0, value.isFinite ? value : 0))
+    }
+}
+
 private enum OCRConsensusResolver {
     nonisolated static func resolve(
         videoName: String,
@@ -1075,12 +1140,41 @@ private enum OCRConsensusResolver {
         let fieldScore = enabledFieldScores.isEmpty
             ? 0
             : enabledFieldScores.reduce(0, +) / Double(enabledFieldScores.count)
-        let ocrScore = samples.isEmpty ? 0 : samples.map(\.confidence).reduce(0, +) / Double(samples.count)
+        let ocrScore = average(samples.map(\.confidence))
+        let formatScore = average(samples.map(\.formatScore))
+        let candidateMargin = average(samples.map(\.candidateMargin))
+        let preprocessingAgreement = average(samples.map(\.preprocessingAgreement))
+        let usesCharacterCorrection = samples.contains { $0.characterCorrectionCount > 0 }
         let hasHighRiskTimecode = timecodeAnalysis?.diagnostics.status == .highRisk
             || timecodeAnalysis?.diagnostics.status == .driftSuspected
-        let validationPenalty = invalidRollSampleCount > 0 || invalidTimecodeSampleCount > 0 || hasHighRiskTimecode ? 0.78 : 1.0
-        let rawConfidence = fieldScore * 0.75 + ocrScore * 0.25
-        let confidence = min(1, max(0, rawConfidence * validationPenalty))
+        let hasAllExpectedValues = (!expectsClipName || clipName != nil)
+            && (!expectsRoll || roll != nil)
+            && (!expectsTimecode || startTimecode != nil)
+        let isLegal = hasAllExpectedValues
+            && invalidRollSampleCount == 0
+            && invalidTimecodeSampleCount == 0
+            && !hasHighRiskTimecode
+        let isTimecodeFrameRateUnique = !expectsTimecode
+            || (timecodeAnalysis?.diagnostics.isFrameRateCandidateUnique == true)
+        let assessment = OCRConfidenceCalibrator.assess(
+            OCRConfidenceEvidence(
+                fieldConsistency: fieldScore,
+                visionConfidence: ocrScore,
+                formatValidity: formatScore,
+                candidateSeparation: candidateMargin,
+                preprocessingAgreement: preprocessingAgreement,
+                temporalConsistency: expectsTimecode ? timecodeScore : 1,
+                isLegal: isLegal,
+                usesCharacterCorrection: usesCharacterCorrection,
+                isTimecodeFrameRateUnique: isTimecodeFrameRateUnique
+            )
+        )
+        if usesCharacterCorrection {
+            notes.append("识别结果包含位置约束字符纠错，已降级为需复核")
+        }
+        if !isTimecodeFrameRateUnique {
+            notes.append("源 TC 帧率候选无法唯一确定，已降级为需复核")
+        }
 
         return ClipOCRResult(
             videoName: videoName,
@@ -1091,7 +1185,7 @@ private enum OCRConsensusResolver {
             clipName: clipName,
             roll: roll,
             startTimecode: startTimecode,
-            confidence: confidence,
+            confidence: assessment.confidence,
             samples: timecodeAnalysis?.annotatedSamples ?? samples,
             timecodeDiagnostics: timecodeAnalysis?.diagnostics,
             notes: notes
@@ -1141,6 +1235,7 @@ private enum OCRConsensusResolver {
                 invalidSampleCount: samples.count,
                 maxDeviationFrames: nil,
                 driftFramesPerMinute: nil,
+                isFrameRateCandidateUnique: false,
                 status: .highRisk,
                 notes: ["时间码样本不足，无法检测源 TC 帧率"]
             )
@@ -1157,7 +1252,34 @@ private enum OCRConsensusResolver {
             )
         }
 
-        return best
+        let matchingCandidates = candidates.filter { hasEquivalentEvidence($0, best) }
+        let isUnique = matchingCandidates.count == 1
+        let notes = isUnique
+            ? best.diagnostics.notes
+            : best.diagnostics.notes + ["多个源 TC 帧率候选同样成立，需人工确认帧率"]
+        let diagnostics = TimecodeDiagnostics(
+            setting: best.diagnostics.setting,
+            videoFrameRate: best.diagnostics.videoFrameRate,
+            sourceTimecodeFrameRate: best.diagnostics.sourceTimecodeFrameRate,
+            validSampleCount: best.diagnostics.validSampleCount,
+            invalidSampleCount: best.diagnostics.invalidSampleCount,
+            maxDeviationFrames: best.diagnostics.maxDeviationFrames,
+            driftFramesPerMinute: best.diagnostics.driftFramesPerMinute,
+            isFrameRateCandidateUnique: isUnique,
+            status: best.diagnostics.status,
+            notes: notes
+        )
+        return TimecodeAnalysis(
+            sourceFrameRate: best.sourceFrameRate,
+            playbackFrameRate: best.playbackFrameRate,
+            isDropFrame: best.isDropFrame,
+            validSampleCount: best.validSampleCount,
+            invalidSampleCount: best.invalidSampleCount,
+            clusteredSampleCount: best.clusteredSampleCount,
+            bestStartFrame: best.bestStartFrame,
+            annotatedSamples: best.annotatedSamples,
+            diagnostics: diagnostics
+        )
     }
 
     nonisolated private static func analyzeCandidate(
@@ -1206,7 +1328,7 @@ private enum OCRConsensusResolver {
         let drift = driftFramesPerMinute(from: readings)
         let status = consistencyStatus(
             videoFrameRate: videoFrameRate,
-            sourceFrameRate: fps,
+            playbackFrameRate: playbackFrameRate,
             validSampleCount: readings.count,
             invalidSampleCount: invalidCount,
             clusteredSampleCount: bestFrameCluster?.count ?? 0,
@@ -1233,6 +1355,7 @@ private enum OCRConsensusResolver {
             invalidSampleCount: invalidCount,
             maxDeviationFrames: maxDeviation,
             driftFramesPerMinute: drift,
+            isFrameRateCandidateUnique: true,
             status: status,
             notes: notes
         )
@@ -1258,6 +1381,12 @@ private enum OCRConsensusResolver {
             return lhs.validSampleCount < rhs.validSampleCount
         }
 
+        let lhsStatusRank = consistencyRank(lhs.diagnostics.status)
+        let rhsStatusRank = consistencyRank(rhs.diagnostics.status)
+        if lhsStatusRank != rhsStatusRank {
+            return lhsStatusRank < rhsStatusRank
+        }
+
         let lhsDeviation = lhs.diagnostics.maxDeviationFrames ?? Int.max
         let rhsDeviation = rhs.diagnostics.maxDeviationFrames ?? Int.max
         if lhsDeviation != rhsDeviation {
@@ -1274,9 +1403,49 @@ private enum OCRConsensusResolver {
         return lhs.sourceFrameRate > rhs.sourceFrameRate
     }
 
+    nonisolated private static func hasEquivalentEvidence(
+        _ lhs: TimecodeAnalysis,
+        _ rhs: TimecodeAnalysis
+    ) -> Bool {
+        lhs.clusteredSampleCount == rhs.clusteredSampleCount
+            && lhs.validSampleCount == rhs.validSampleCount
+            && consistencyRank(lhs.diagnostics.status) == consistencyRank(rhs.diagnostics.status)
+            && lhs.diagnostics.maxDeviationFrames == rhs.diagnostics.maxDeviationFrames
+            && driftValuesMatch(
+                lhs.diagnostics.driftFramesPerMinute,
+                rhs.diagnostics.driftFramesPerMinute
+            )
+    }
+
+    nonisolated private static func driftValuesMatch(_ lhs: Double?, _ rhs: Double?) -> Bool {
+        switch (lhs, rhs) {
+        case (.none, .none):
+            true
+        case let (.some(lhs), .some(rhs)):
+            abs(lhs - rhs) < 0.001
+        default:
+            false
+        }
+    }
+
+    nonisolated private static func consistencyRank(_ status: TimecodeConsistencyStatus) -> Int {
+        switch status {
+        case .consistent:
+            4
+        case .frameRateMismatchStable:
+            3
+        case .notChecked:
+            2
+        case .driftSuspected:
+            1
+        case .highRisk:
+            0
+        }
+    }
+
     nonisolated private static func consistencyStatus(
         videoFrameRate: Double,
-        sourceFrameRate: Int,
+        playbackFrameRate: Double,
         validSampleCount: Int,
         invalidSampleCount: Int,
         clusteredSampleCount: Int,
@@ -1295,7 +1464,7 @@ private enum OCRConsensusResolver {
             return .driftSuspected
         }
 
-        let frameRatesMatch = abs(videoFrameRate - Double(sourceFrameRate)) <= 0.05
+        let frameRatesMatch = abs(videoFrameRate - playbackFrameRate) <= 0.05
         return frameRatesMatch ? .consistent : .frameRateMismatchStable
     }
 
@@ -1416,6 +1585,10 @@ private enum OCRConsensusResolver {
             actualSeconds: sample.actualSeconds,
             rawText: sample.rawText,
             confidence: sample.confidence,
+            formatScore: sample.formatScore,
+            candidateMargin: sample.candidateMargin,
+            preprocessingAgreement: sample.preprocessingAgreement,
+            characterCorrectionCount: sample.characterCorrectionCount,
             actualTimeValue: sample.actualTimeValue,
             actualTimeTimescale: sample.actualTimeTimescale,
             timecodeSequenceID: sample.timecodeSequenceID,
@@ -1456,6 +1629,10 @@ private enum OCRConsensusResolver {
             return 0
         }
         return min(1, 0.55 + Double(candidateCount) * 0.15)
+    }
+
+    nonisolated private static func average(_ values: [Double]) -> Double {
+        values.isEmpty ? 0 : values.reduce(0, +) / Double(values.count)
     }
 }
 

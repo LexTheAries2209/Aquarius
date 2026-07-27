@@ -17,6 +17,7 @@ struct RunAsyncAnalyzerSmoke {
         try verifyCandidateRanking()
         try verifyAdaptivePreprocessing()
         try verifyAdjacentTimecodeSequences()
+        try verifyConfidenceCalibration()
 
         let projectRoot = URL(fileURLWithPath: FileManager.default.currentDirectoryPath, isDirectory: true)
         let samplesDirectory = projectRoot
@@ -308,6 +309,77 @@ struct RunAsyncAnalyzerSmoke {
                 timecodeSequencePosition: position
             )
         }
+    }
+
+    private static func verifyConfidenceCalibration() throws {
+        let idealEvidence = OCRConfidenceEvidence(
+            fieldConsistency: 1,
+            visionConfidence: 1,
+            formatValidity: 1,
+            candidateSeparation: 0.20,
+            preprocessingAgreement: 1,
+            temporalConsistency: 1,
+            isLegal: true,
+            usesCharacterCorrection: false,
+            isTimecodeFrameRateUnique: true
+        )
+        let ideal = OCRConfidenceCalibrator.assess(idealEvidence)
+        let corrected = OCRConfidenceCalibrator.assess(
+            OCRConfidenceEvidence(
+                fieldConsistency: 1,
+                visionConfidence: 1,
+                formatValidity: 1,
+                candidateSeparation: 0.20,
+                preprocessingAgreement: 1,
+                temporalConsistency: 1,
+                isLegal: true,
+                usesCharacterCorrection: true,
+                isTimecodeFrameRateUnique: true
+            )
+        )
+        let ambiguous = OCRConfidenceCalibrator.assess(
+            OCRConfidenceEvidence(
+                fieldConsistency: 1,
+                visionConfidence: 1,
+                formatValidity: 1,
+                candidateSeparation: 0.20,
+                preprocessingAgreement: 1,
+                temporalConsistency: 1,
+                isLegal: true,
+                usesCharacterCorrection: false,
+                isTimecodeFrameRateUnique: false
+            )
+        )
+        let correctedCharacterCount = OCRCandidateRanker.positionCorrectionCount(
+            kind: .clipName,
+            text: "A00GC00T"
+        )
+        let cleanCharacterCount = OCRCandidateRanker.positionCorrectionCount(
+            kind: .clipName,
+            text: "A006C001"
+        )
+        let failures = [
+            ideal.confidence >= 0.82 && !ideal.requiresReview
+                ? nil
+                : "ideal evidence should remain trusted",
+            corrected.confidence < 0.82 && corrected.requiresReview
+                ? nil
+                : "character-corrected evidence must require review",
+            ambiguous.confidence < 0.82 && ambiguous.requiresReview
+                ? nil
+                : "ambiguous timecode frame rate must require review",
+            correctedCharacterCount == 2
+                ? nil
+                : "A00GC00T should record two position corrections, got \(correctedCharacterCount)",
+            cleanCharacterCount == 0
+                ? nil
+                : "A006C001 should not record position corrections"
+        ].compactMap { $0 }
+
+        if !failures.isEmpty {
+            throw SmokeError.failedFiles(failures)
+        }
+        print("OCR confidence calibration cases passed")
     }
 }
 

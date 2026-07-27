@@ -79,6 +79,10 @@ struct OCRSample: Identifiable, Sendable {
     let actualSeconds: Double
     let rawText: String
     let confidence: Double
+    let formatScore: Double
+    let candidateMargin: Double
+    let preprocessingAgreement: Double
+    let characterCorrectionCount: Int
     let actualTimeValue: Int64?
     let actualTimeTimescale: Int32?
     let timecodeSequenceID: UUID?
@@ -93,6 +97,10 @@ struct OCRSample: Identifiable, Sendable {
         actualSeconds: Double,
         rawText: String,
         confidence: Double,
+        formatScore: Double = 0,
+        candidateMargin: Double = 0,
+        preprocessingAgreement: Double = 0,
+        characterCorrectionCount: Int = 0,
         actualTimeValue: Int64? = nil,
         actualTimeTimescale: Int32? = nil,
         timecodeSequenceID: UUID? = nil,
@@ -106,6 +114,10 @@ struct OCRSample: Identifiable, Sendable {
         self.actualSeconds = actualSeconds
         self.rawText = rawText
         self.confidence = confidence
+        self.formatScore = formatScore
+        self.candidateMargin = candidateMargin
+        self.preprocessingAgreement = preprocessingAgreement
+        self.characterCorrectionCount = characterCorrectionCount
         self.actualTimeValue = actualTimeValue
         self.actualTimeTimescale = actualTimeTimescale
         self.timecodeSequenceID = timecodeSequenceID
@@ -489,6 +501,7 @@ struct TimecodeDiagnostics: Sendable {
     let invalidSampleCount: Int
     let maxDeviationFrames: Int?
     let driftFramesPerMinute: Double?
+    let isFrameRateCandidateUnique: Bool
     let status: TimecodeConsistencyStatus
     let notes: [String]
 
