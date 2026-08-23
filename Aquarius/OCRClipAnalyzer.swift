@@ -390,6 +390,8 @@ enum OCRImagePreprocessingVariant {
 }
 
 private struct ROIImageProcessor {
+    // Expand every OCR ROI by 10% per edge to retain nearby anti-aliased glyph pixels.
+    nonisolated private static let captureExpansionPerEdge: CGFloat = 0.10
     private let context = CIContext()
 
     nonisolated init() {}
@@ -401,9 +403,15 @@ private struct ROIImageProcessor {
     ) -> CGImage? {
         let width = CGFloat(image.width)
         let height = CGFloat(image.height)
-        let cropRect = expanded
-            ? normalizedRect.insetBy(dx: -0.010, dy: -0.012)
-            : normalizedRect
+        let cropRect: CGRect
+        if expanded {
+            cropRect = normalizedRect.insetBy(
+                dx: -normalizedRect.width * Self.captureExpansionPerEdge,
+                dy: -normalizedRect.height * Self.captureExpansionPerEdge
+            )
+        } else {
+            cropRect = normalizedRect
+        }
         let clamped = cropRect.intersection(CGRect(x: 0, y: 0, width: 1, height: 1))
 
         let pixelRect = CGRect(
