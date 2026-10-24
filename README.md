@@ -144,7 +144,7 @@ Avid ALE 导出会生成 tab 分隔的三段式文本：`Heading`、`Column`、`
 - 启用“复制改名按钮”后，可按识别或手动输入的文件名复制到新文件夹。
 - 改名支持统一前缀、后缀；同名文件会自动追加序号。
 - 同时启用时间码烧录和复制改名后，会出现“烧录并改名”按钮。
-- 设置窗口采用 macOS 分组表单样式，底部 Dock 和设置页都保留 GitHub 仓库入口，方便查看版本说明、下载发布包或提交问题反馈。
+- 设置窗口采用 macOS 分组表单样式；主页 Dock 保留 GitHub 仓库入口，方便查看版本说明、下载发布包或提交问题反馈。
 
 ### 支持的视频格式
 
@@ -297,7 +297,7 @@ Open Project Settings from the small Dock at the bottom-left of the media librar
 - Enable copy-and-rename to copy files into a new folder using recognized or manually entered clip names.
 - Prefixes and suffixes can be configured for renamed outputs.
 - When both timecode writing and renaming are enabled, the app exposes a combined burn-and-rename action.
-- The Settings window follows macOS grouped-form styling, and both the bottom-left Dock and Settings retain the GitHub repository location for release notes, downloadable builds, and issue feedback.
+- The Settings window follows macOS grouped-form styling, while the main-window Dock retains the GitHub repository location for release notes, downloadable builds, and issue feedback.
 
 ### Supported Video Format
 

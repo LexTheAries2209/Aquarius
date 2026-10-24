@@ -309,6 +309,24 @@ struct ContentView: View {
 
     private var aquariusDock: some View {
         VStack(alignment: .leading, spacing: 8) {
+            Link(destination: aquariusGitHubURL) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Label("打开 Aquarius GitHub 仓库", systemImage: "safari")
+                        .font(.caption.weight(.semibold))
+                    Text("GitHub: github.com/LexTheAries2209/Aquarius")
+                        .font(.caption2.monospaced())
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.68)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(.secondary)
+            .help("GitHub 仓库：代码、版本说明、发布包与问题反馈")
+            .accessibilityLabel("打开 Aquarius GitHub 仓库")
+
+            Divider()
+
             HStack(spacing: 8) {
                 SettingsLink {
                     Label("设置", systemImage: "gearshape")
@@ -327,24 +345,6 @@ struct ContentView: View {
             }
             .buttonStyle(.plain)
             .foregroundStyle(.secondary)
-
-            Divider()
-
-            Link(destination: aquariusGitHubURL) {
-                VStack(alignment: .leading, spacing: 3) {
-                    Label("打开 Aquarius GitHub 仓库", systemImage: "safari")
-                        .font(.caption.weight(.semibold))
-                    Text("GitHub: github.com/LexTheAries2209/Aquarius")
-                        .font(.caption2.monospaced())
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.68)
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-            }
-            .buttonStyle(.plain)
-            .foregroundStyle(.secondary)
-            .help("GitHub 仓库：代码、版本说明、发布包与问题反馈")
-            .accessibilityLabel("打开 Aquarius GitHub 仓库")
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(10)
@@ -1327,16 +1327,6 @@ struct ProjectSettingsView: View {
                     .font(.body.monospaced())
             }
 
-            Section("关于 Aquarius") {
-                LabeledContent("版本", value: aquariusDisplayName())
-                LabeledContent("用户", value: NSUserName())
-                Link(destination: aquariusGitHubURL) {
-                    Label("打开 Aquarius GitHub 仓库", systemImage: "safari")
-                }
-                Text("GitHub 仓库：代码、版本说明、发布包与问题反馈均在仓库维护。")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
         }
         .formStyle(.grouped)
         .padding(20)
