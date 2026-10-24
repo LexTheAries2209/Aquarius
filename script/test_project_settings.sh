@@ -19,4 +19,4 @@ xcrun swiftc \
     work/RunProjectSettingsSmoke.swift \
     -o "$TASK_TEMP_DIR/project-settings-smoke"
 
-"$TASK_TEMP_DIR/project-settings-smoke"
+"$TASK_TEMP_DIR/project-settings-smoke" "$TASK_TEMP_DIR"

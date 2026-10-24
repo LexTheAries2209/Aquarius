@@ -1157,6 +1157,28 @@ private struct ProjectSettingsView: View {
                         Toggle("显示载入样片按钮", isOn: $viewModel.showsSampleLoader)
                     }
 
+                    settingsSection(title: "启动时启用的识别字段") {
+                        ForEach(OCRFieldKind.allCases) { kind in
+                            Toggle(kind.title, isOn: Binding(
+                                get: { viewModel.startupEnabledFieldKinds.contains(kind) },
+                                set: { viewModel.setStartupField(kind, isEnabled: $0) }
+                            ))
+                            .accessibilityIdentifier("startup-field-\(kind.rawValue)")
+                        }
+
+                        Text("下次启动时生效。主界面的临时字段开关不会改变此设置。")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+
+                        if viewModel.startupEnabledFieldKinds.isEmpty {
+                            Text("未选择字段；启动后需先在主界面开启识别字段。")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
+
                     settingsSection(title: "时间码显示") {
                         Toggle("显示时间码检测详情", isOn: $viewModel.showsTimecodeDiagnosticsDetails)
 

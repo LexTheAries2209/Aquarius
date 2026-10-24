@@ -10,6 +10,8 @@ struct RunProjectSettingsSmoke {
         let decoder = JSONDecoder()
         let defaults = ProjectOutputSettings()
         try check(defaults.showsSampleLoader, "sample menu must be visible by default")
+        try check(defaults.startupEnabledFieldKinds == Set(OCRFieldKind.allCases),
+                  "all OCR fields must be enabled until startup defaults are configured")
 
         let legacy = Data("""
         {"isTimecodeBurnEnabled":true,"isFileRenameEnabled":true,
@@ -17,6 +19,8 @@ struct RunProjectSettingsSmoke {
         """.utf8)
         let migrated = try decoder.decode(ProjectOutputSettings.self, from: legacy)
         try check(migrated.showsSampleLoader, "old settings must default to a visible sample menu")
+        try check(migrated.startupEnabledFieldKinds == Set(OCRFieldKind.allCases),
+                  "old settings must continue to enable all OCR fields")
         try check(migrated.isTimecodeBurnEnabled && migrated.isFileRenameEnabled
                   && migrated.showsTimecodeDiagnosticsDetails && migrated.renamePrefix == "TEST_",
                   "reading old settings must preserve existing preferences")
@@ -27,11 +31,78 @@ struct RunProjectSettingsSmoke {
             let restored = try decoder.decode(ProjectOutputSettings.self, from: data)
             try check(restored == settings, "both sample-menu states must survive a settings round trip")
         }
-        let model = AnalysisViewModel()
+        let testRoot = URL(fileURLWithPath: CommandLine.arguments[1], isDirectory: true)
+        let model = AnalysisViewModel(applicationSupportURL: testRoot.appendingPathComponent("empty"))
         try check(model.mediaItems.isEmpty && model.selectedMediaItemID == nil && model.player == nil,
                   "a new session must start with an empty media queue and no player")
+        try check(model.enabledFieldKinds == Set(OCRFieldKind.allCases), "a fresh session must enable all OCR fields")
         print("Project settings passed: empty startup, default visibility, legacy settings and visibility persistence")
+        try verifyStartupFields(in: testRoot, legacySettings: legacy)
         try verifyKeyboardRouting()
+    }
+
+    @MainActor
+    private static func verifyStartupFields(in testRoot: URL, legacySettings: Data) throws {
+        let supportURL = testRoot.appendingPathComponent("startup-fields", isDirectory: true)
+        let storeDirectory = supportURL.appendingPathComponent("Aquarius", isDirectory: true)
+        try FileManager.default.createDirectory(at: storeDirectory, withIntermediateDirectories: true)
+        let settingsURL = storeDirectory.appendingPathComponent("ProjectOutputSettings.json")
+        let decoder = JSONDecoder()
+        let encoder = JSONEncoder()
+        try legacySettings.write(to: settingsURL)
+        let legacyModel = AnalysisViewModel(applicationSupportURL: supportURL)
+        try check(legacyModel.enabledFieldKinds == Set(OCRFieldKind.allCases)
+                  && legacyModel.isTimecodeBurnOptionEnabled && legacyModel.renameOutputPrefix == "TEST_",
+                  "a legacy settings file must preserve preferences and enable every OCR field")
+
+        // Cover every field combination, including an explicitly empty selection.
+        for mask in 0..<8 {
+            let wanted = Set(OCRFieldKind.allCases.enumerated().compactMap { index, kind in
+                mask & (1 << index) != 0 ? kind : nil
+            })
+            let settings = ProjectOutputSettings(showsSampleLoader: false, startupEnabledFieldKinds: wanted)
+            try encoder.encode(settings).write(to: settingsURL)
+            let model = AnalysisViewModel(applicationSupportURL: supportURL)
+            try check(model.startupEnabledFieldKinds == wanted && model.enabledFieldKinds == wanted,
+                      "launch must restore the exact saved field selection for mask \(mask)")
+            try check(Set(model.enabledRegions.map(\.kind)) == wanted && model.hasEnabledFields == !wanted.isEmpty,
+                      "OCR regions and analysis availability must match the startup selection")
+            if !wanted.isEmpty {
+                try check(model.enabledRegions.contains { $0.id == model.selectedRegionID },
+                          "launch must select an enabled ROI even without saved ROI presets")
+            }
+            model.setField(.clipName, isEnabled: !wanted.contains(.clipName))
+            let unchanged = try decoder.decode(ProjectOutputSettings.self, from: Data(contentsOf: settingsURL))
+            try check(unchanged == settings, "session field switches must not overwrite startup settings")
+            model.renameOutputPrefix = "SESSION_"
+            let relaunched = AnalysisViewModel(applicationSupportURL: supportURL)
+            try check(relaunched.enabledFieldKinds == wanted && relaunched.startupEnabledFieldKinds == wanted,
+                      "saving another preference must not persist temporary session switches")
+            try check(!relaunched.showsSampleLoader && relaunched.renameOutputPrefix == "SESSION_",
+                      "saving startup fields must preserve other preferences")
+        }
+
+        try encoder.encode(ProjectOutputSettings(startupEnabledFieldKinds: [.timecode])).write(to: settingsURL)
+        let model = AnalysisViewModel(applicationSupportURL: supportURL)
+        model.setStartupField(.roll, isEnabled: true)
+        model.setStartupField(.timecode, isEnabled: false)
+        try check(model.enabledFieldKinds == [.timecode], "editing startup defaults must not change the active session")
+        let relaunched = AnalysisViewModel(applicationSupportURL: supportURL)
+        try check(relaunched.enabledFieldKinds == [.roll], "startup toggles must persist and apply at the next launch")
+        try check(relaunched.errorMessage == nil, "saving startup defaults must not fail")
+
+        let customTimecode = OCRRegion(
+            id: "custom-timecode", label: "TC", kind: .timecode,
+            normalizedRect: CGRect(x: 0.7, y: 0.9, width: 0.2, height: 0.08)
+        )
+        let presets = [ROIPreset(name: "Custom", regions: [OCRRegion.qtakeLowerLeftPreset[0], customTimecode])]
+        encoder.dateEncodingStrategy = .iso8601
+        try encoder.encode(presets).write(to: storeDirectory.appendingPathComponent("ROIPresets.json"))
+        try encoder.encode(ProjectOutputSettings(startupEnabledFieldKinds: [.timecode])).write(to: settingsURL)
+        let customModel = AnalysisViewModel(applicationSupportURL: supportURL)
+        try check(customModel.enabledRegions.map(\.id) == [customTimecode.id] && customModel.selectedRegionID == customTimecode.id,
+                  "saved ROI presets must also select and enable only the requested startup fields")
+        print("Startup fields passed: eight combinations, legacy settings, disk persistence, session independence and default/custom ROI selection")
     }
 
     @MainActor

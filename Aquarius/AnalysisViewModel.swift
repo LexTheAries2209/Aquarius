@@ -98,6 +98,9 @@ final class AnalysisViewModel: ObservableObject {
     @Published var showsSampleLoader = true {
         didSet { persistProjectOutputSettings() }
     }
+    @Published var startupEnabledFieldKinds = Set(OCRFieldKind.allCases) {
+        didSet { persistProjectOutputSettings() }
+    }
     @Published var renameOutputPrefix = "" {
         didSet { persistProjectOutputSettings() }
     }
@@ -118,11 +121,14 @@ final class AnalysisViewModel: ObservableObject {
     private var playbackDurationTask: Task<Void, Never>?
     private var sourceMetadataTasks: [MediaQueueItem.ID: Task<Void, Never>] = [:]
     private var isLoadingProjectOutputSettings = false
+    private let applicationSupportURL: URL?
 
-    init() {
+    init(applicationSupportURL: URL? = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first) {
+        self.applicationSupportURL = applicationSupportURL
         migrateLegacyApplicationSupportIfNeeded()
         loadProjectOutputSettings()
         loadROIPresets()
+        selectFirstEnabledRegionIfNeeded()
     }
 
     deinit {
@@ -885,6 +891,15 @@ final class AnalysisViewModel: ObservableObject {
 
         selectFirstEnabledRegionIfNeeded()
         statusMessage = hasEnabledFields ? "已更新识别字段开关" : "请至少开启一个识别字段"
+    }
+
+    func setStartupField(_ kind: OCRFieldKind, isEnabled: Bool) {
+        // Startup preferences do not change the fields of an active OCR session.
+        if isEnabled {
+            startupEnabledFieldKinds.insert(kind)
+        } else {
+            startupEnabledFieldKinds.remove(kind)
+        }
     }
 
     func setSourceTimecodeFrameRateSetting(_ setting: SourceTimecodeFrameRateSetting) {
@@ -2587,6 +2602,8 @@ final class AnalysisViewModel: ObservableObject {
         exportsCompanionCSVForRenamedFiles = settings.exportsCompanionCSVForRenamedFiles
         showsTimecodeDiagnosticsDetails = settings.showsTimecodeDiagnosticsDetails
         showsSampleLoader = settings.showsSampleLoader
+        startupEnabledFieldKinds = settings.startupEnabledFieldKinds
+        enabledFieldKinds = startupEnabledFieldKinds
         renameOutputPrefix = settings.renamePrefix
         renameOutputSuffix = settings.renameSuffix
         isLoadingProjectOutputSettings = false
@@ -2612,6 +2629,7 @@ final class AnalysisViewModel: ObservableObject {
                 exportsCompanionCSVForRenamedFiles: exportsCompanionCSVForRenamedFiles,
                 showsTimecodeDiagnosticsDetails: showsTimecodeDiagnosticsDetails,
                 showsSampleLoader: showsSampleLoader,
+                startupEnabledFieldKinds: startupEnabledFieldKinds,
                 renamePrefix: renameOutputPrefix,
                 renameSuffix: renameOutputSuffix
             )
@@ -2639,7 +2657,6 @@ final class AnalysisViewModel: ObservableObject {
         selectedROIPresetID = presets.first?.id
         if let firstPreset = presets.first {
             regions = firstPreset.ocrRegions
-            selectFirstEnabledRegionIfNeeded()
         }
     }
 
@@ -2706,7 +2723,7 @@ final class AnalysisViewModel: ObservableObject {
     private static let legacyApplicationSupportFolderName = "OCR" + "Timecode"
 
     private func migrateLegacyApplicationSupportIfNeeded() {
-        guard let applicationSupportURL = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first else {
+        guard let applicationSupportURL else {
             return
         }
 
@@ -2725,15 +2742,13 @@ final class AnalysisViewModel: ObservableObject {
     }
 
     private var roiPresetStoreURL: URL? {
-        FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)
-            .first?
+        applicationSupportURL?
             .appendingPathComponent(Self.applicationSupportFolderName, isDirectory: true)
             .appendingPathComponent("ROIPresets.json")
     }
 
     private var projectOutputSettingsStoreURL: URL? {
-        FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)
-            .first?
+        applicationSupportURL?
             .appendingPathComponent(Self.applicationSupportFolderName, isDirectory: true)
             .appendingPathComponent("ProjectOutputSettings.json")
     }

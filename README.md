@@ -134,6 +134,7 @@ Avid ALE 导出会生成 tab 分隔的三段式文本：`Heading`、`Column`、`
 右下角齿轮按钮会打开“项目设置”，也可直接按 `` · / ～ / ` / ~ ``（无需 Command；输入框编辑时不触发）：
 
 - “显示载入样片按钮”默认开启，关闭后隐藏顶部样片菜单；此设置会在下次启动时保留。
+- “启动时启用的识别字段”可分别设置文件名、卷号、时间码，保存后从下次启动生效。例如仅勾选时间码，可让软件每次启动只启用时间码识别；主界面的临时开关不会覆盖启动默认值。未设置过时仍默认启用全部字段。
 - 启用“显示时间码检测详情”后，右侧检查器会显示视频帧率、识别 TC 帧率、TMCD 对比、一致性和漂移信息；关闭时只保留更简洁的源时间码帧率控制和必要风险提示。
 - 启用“时间码烧录按钮”后，可选择“烧录到源文件”或“复制到新文件夹并烧录”。
 - “烧录到源文件”会直接修改列表内原始 MOV / QuickTime 文件的 TMCD sample。请先备份原始文件。
@@ -286,6 +287,7 @@ Avid ALE export generates tab-delimited text with `Heading`, `Column`, and `Data
 Open Project Settings from the gear button in the lower-right corner, or press the grave/tilde key (`` ` `` / `~`, including Chinese-input `·` / `～`) without Command. The shortcut does not interrupt text editing.
 
 - The sample menu is visible by default. Turn off "显示载入样片按钮" to hide it; this preference persists across launches.
+- Choose filename, roll, and timecode independently under "启动时启用的识别字段" to set the fields enabled at the next launch. Select only timecode for timecode-only projects. Changes to the current session's field switches do not overwrite these defaults; existing installations continue to enable all fields until configured.
 - Enable detailed timecode diagnostics to show video frame rate, recognized TC rate, TMCD comparison, consistency, and drift details in the inspector; when disabled, the UI keeps only the source TC rate control and necessary risk warnings.
 - Enable the timecode burn button to write recovered start TC into TMCD metadata.
 - Source-file mode directly modifies the original MOV / QuickTime file. Back up originals first.
