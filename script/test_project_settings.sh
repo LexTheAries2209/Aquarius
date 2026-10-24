@@ -15,6 +15,7 @@ xcrun swiftc \
     Aquarius/MediaInfoMetadata.swift \
     Aquarius/QuickTimeTMCDWriter.swift \
     Aquarius/AnalysisViewModel.swift \
+    Aquarius/ProjectSettingsKeyHandler.swift \
     work/RunProjectSettingsSmoke.swift \
     -o "$TASK_TEMP_DIR/project-settings-smoke"
 

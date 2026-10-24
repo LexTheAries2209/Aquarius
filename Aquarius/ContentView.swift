@@ -46,6 +46,11 @@ struct ContentView: View {
                 playbackID: viewModel.player.map { ObjectIdentifier($0) }
             )
             .frame(width: 0, height: 0)
+
+            ProjectSettingsKeyHandler {
+                isShowingProjectSettings = true
+            }
+            .frame(width: 0, height: 0)
         }
         .sheet(isPresented: $isShowingProjectSettings) {
             ProjectSettingsView(viewModel: viewModel, isPresented: $isShowingProjectSettings)
@@ -192,8 +197,7 @@ struct ContentView: View {
                 .labelStyle(.iconOnly)
         }
         .buttonStyle(.bordered)
-        .keyboardShortcut("p", modifiers: .command)
-        .help("项目设置 (Command-P)")
+        .help("项目设置 (· / ～ / ` / ~)")
         .padding(.trailing, 18)
         .padding(.bottom, 16)
     }
@@ -1203,7 +1207,7 @@ private struct ProjectSettingsView: View {
                         HStack {
                             Text("打开项目设置")
                             Spacer()
-                            Text("Command-P")
+                            Text("· / ～ / ` / ~")
                                 .font(.body.monospaced())
                                 .foregroundStyle(.secondary)
                         }
