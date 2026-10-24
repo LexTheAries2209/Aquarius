@@ -5,10 +5,16 @@ import AVKit
 import SwiftUI
 import UniformTypeIdentifiers
 
+private let aquariusGitHubURL = URL(string: "https://github.com/LexTheAries2209/Aquarius")!
+
+private func aquariusDisplayName() -> String {
+    Bundle.main.object(forInfoDictionaryKey: "CFBundleDisplayName") as? String ?? "Aquarius"
+}
+
 struct ContentView: View {
-    @StateObject private var viewModel = AnalysisViewModel()
+    @ObservedObject var viewModel: AnalysisViewModel
     @State private var isDropTargeted = false
-    @State private var isShowingProjectSettings = false
+    @Environment(\.openSettings) private var openSettings
 
     var body: some View {
         VStack(spacing: 0) {
@@ -24,14 +30,6 @@ struct ContentView: View {
                         .frame(minWidth: 620)
 
                     inspector
-                        .safeAreaInset(edge: .bottom, spacing: 0) {
-                            HStack {
-                                Spacer()
-                                projectSettingsLauncher
-                            }
-                            .padding(.top, 8)
-                            .background(Color(nsColor: .controlBackgroundColor))
-                        }
                         .frame(minWidth: 340, idealWidth: 380, maxWidth: 460)
                 }
             }
@@ -49,12 +47,9 @@ struct ContentView: View {
             .frame(width: 0, height: 0)
 
             ProjectSettingsKeyHandler {
-                isShowingProjectSettings = true
+                openAquariusSettings()
             }
             .frame(width: 0, height: 0)
-        }
-        .sheet(isPresented: $isShowingProjectSettings) {
-            ProjectSettingsView(viewModel: viewModel, isPresented: $isShowingProjectSettings)
         }
     }
 
@@ -190,19 +185,6 @@ struct ContentView: View {
         .accessibilityHidden(true)
     }
 
-    private var projectSettingsLauncher: some View {
-        Button {
-            isShowingProjectSettings = true
-        } label: {
-            Label("项目设置", systemImage: "gearshape")
-                .labelStyle(.iconOnly)
-        }
-        .buttonStyle(.bordered)
-        .help("项目设置 (· / ～ / ` / ~)")
-        .padding(.trailing, 18)
-        .padding(.bottom, 16)
-    }
-
     private var mediaSidebar: some View {
         VStack(spacing: 0) {
             VStack(alignment: .leading, spacing: 10) {
@@ -294,6 +276,9 @@ struct ContentView: View {
             }
         }
         .background(Color(nsColor: .controlBackgroundColor))
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            aquariusDock
+        }
         .overlay {
             if isDropTargeted {
                 RoundedRectangle(cornerRadius: 12)
@@ -315,6 +300,54 @@ struct ContentView: View {
         } isTargeted: { isTargeted in
             isDropTargeted = isTargeted
         }
+    }
+
+    private var aquariusDock: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 8) {
+                SettingsLink {
+                    Label("设置", systemImage: "gearshape")
+                        .font(.caption.weight(.semibold))
+                }
+                .help("打开项目设置")
+                .accessibilityLabel("打开项目设置")
+
+                Spacer(minLength: 8)
+
+                Text("\(aquariusDisplayName()) · \(NSUserName())")
+                    .font(.caption2)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                    .help("Aquarius 版本和 macOS 用户名")
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(.secondary)
+
+            Divider()
+
+            Link(destination: aquariusGitHubURL) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Label("打开 Aquarius GitHub 仓库", systemImage: "safari")
+                        .font(.caption.weight(.semibold))
+                    Text("GitHub: github.com/LexTheAries2209/Aquarius")
+                        .font(.caption2.monospaced())
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.68)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(.secondary)
+            .help("GitHub 仓库：代码、版本说明、发布包与问题反馈")
+            .accessibilityLabel("打开 Aquarius GitHub 仓库")
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(10)
+        .background(.bar)
+    }
+
+    private func openAquariusSettings() {
+        openSettings()
     }
 
     private var videoColumn: some View {
@@ -1143,141 +1176,112 @@ struct ContentView: View {
     }
 }
 
-private struct ProjectSettingsView: View {
+struct ProjectSettingsView: View {
     @ObservedObject var viewModel: AnalysisViewModel
-    @Binding var isPresented: Bool
+    @Environment(\.dismiss) private var dismiss
 
     var body: some View {
-        VStack(spacing: 0) {
-            HStack {
-                Text("项目设置")
-                    .font(.title2.weight(.semibold))
-                Spacer()
-                Button {
-                    isPresented = false
-                } label: {
-                    Label("完成", systemImage: "checkmark")
-                }
-                .keyboardShortcut(.defaultAction)
+        Form {
+            Section("界面") {
+                Toggle("显示载入样片按钮", isOn: $viewModel.showsSampleLoader)
             }
-            .padding(.horizontal, 22)
-            .padding(.vertical, 16)
 
-            Divider()
+            Section("启动时启用的识别字段") {
+                ForEach(OCRFieldKind.allCases) { kind in
+                    Toggle(kind.title, isOn: Binding(
+                        get: { viewModel.startupEnabledFieldKinds.contains(kind) },
+                        set: { viewModel.setStartupField(kind, isEnabled: $0) }
+                    ))
+                    .accessibilityIdentifier("startup-field-\(kind.rawValue)")
+                }
 
-            ScrollView {
-                VStack(alignment: .leading, spacing: 22) {
-                    settingsSection(title: "界面") {
-                        Toggle("显示载入样片按钮", isOn: $viewModel.showsSampleLoader)
-                    }
+                Text(
+                    viewModel.startupEnabledFieldKinds.isEmpty
+                        ? "未选择字段；启动后需先在主界面开启识别字段。"
+                        : "下次启动时生效。主界面的临时字段开关不会改变此设置。"
+                )
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            }
 
-                    settingsSection(title: "启动时启用的识别字段") {
-                        ForEach(OCRFieldKind.allCases) { kind in
-                            Toggle(kind.title, isOn: Binding(
-                                get: { viewModel.startupEnabledFieldKinds.contains(kind) },
-                                set: { viewModel.setStartupField(kind, isEnabled: $0) }
-                            ))
-                            .accessibilityIdentifier("startup-field-\(kind.rawValue)")
-                        }
+            Section("时间码显示") {
+                Toggle("显示时间码检测详情", isOn: $viewModel.showsTimecodeDiagnosticsDetails)
+                Text("关闭时右侧只保留源时间码帧率控制；检测到帧率不一致或高风险时仍会显示简短提示。")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
 
-                        Text("下次启动时生效。主界面的临时字段开关不会改变此设置。")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                            .fixedSize(horizontal: false, vertical: true)
+            Section("时间码烧录") {
+                Toggle("启用时间码烧录按钮", isOn: $viewModel.isTimecodeBurnOptionEnabled)
 
-                        if viewModel.startupEnabledFieldKinds.isEmpty {
-                            Text("未选择字段；启动后需先在主界面开启识别字段。")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                                .fixedSize(horizontal: false, vertical: true)
-                        }
-                    }
-
-                    settingsSection(title: "时间码显示") {
-                        Toggle("显示时间码检测详情", isOn: $viewModel.showsTimecodeDiagnosticsDetails)
-
-                        Text("关闭时右侧只保留源时间码帧率控制；检测到帧率不一致或高风险时仍会显示简短提示。")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-
-                    settingsSection(title: "时间码烧录") {
-                        Toggle("启用时间码烧录按钮", isOn: $viewModel.isTimecodeBurnOptionEnabled)
-
-                        Picker("输出方式", selection: $viewModel.timecodeBurnOutputMode) {
-                            ForEach(TimecodeBurnOutputMode.allCases) { mode in
-                                Text(mode.title).tag(mode)
-                            }
-                        }
-                        .pickerStyle(.radioGroup)
-                        .disabled(!viewModel.isTimecodeBurnOptionEnabled)
-
-                        Text(viewModel.timecodeBurnOutputMode.description)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-
-                    settingsSection(title: "文件名改名") {
-                        Toggle("启用复制改名按钮", isOn: $viewModel.isFileRenameOptionEnabled)
-
-                        Toggle("复制改名后自动生成配套元数据 CSV", isOn: $viewModel.exportsCompanionCSVForRenamedFiles)
-                            .disabled(!viewModel.isFileRenameOptionEnabled)
-
-                        HStack(spacing: 10) {
-                            TextField("前缀", text: $viewModel.renameOutputPrefix)
-                                .textFieldStyle(.roundedBorder)
-                            TextField("后缀", text: $viewModel.renameOutputSuffix)
-                                .textFieldStyle(.roundedBorder)
-                        }
-                        .disabled(!viewModel.isFileRenameOptionEnabled)
-
-                        Text("改名会复制到新文件夹，不修改源文件；文件名来自识别结果或手动输入，同名会自动附加 -1、-2。配套元数据 CSV 会使用改名后的真实文件名作为目标软件匹配键。")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-
-                    settingsSection(title: "快捷键") {
-                        HStack {
-                            Text("打开项目设置")
-                            Spacer()
-                            Text("· / ～ / ` / ~")
-                                .font(.body.monospaced())
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-
-                    settingsSection(title: "关于 Aquarius") {
-                        Text("GitHub 仓库：github.com/LexTheAries2209/Aquarius。代码、版本说明、发布包与问题反馈均在仓库维护，欢迎通过 Issue 或 Pull Request 参与改进。")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                            .textSelection(.enabled)
-                            .fixedSize(horizontal: false, vertical: true)
+                Picker("输出方式", selection: $viewModel.timecodeBurnOutputMode) {
+                    ForEach(TimecodeBurnOutputMode.allCases) { mode in
+                        Text(mode.title).tag(mode)
                     }
                 }
-                .padding(22)
-            }
-        }
-        .frame(width: 540, height: 520)
-    }
+                .pickerStyle(.radioGroup)
+                .disabled(!viewModel.isTimecodeBurnOptionEnabled)
 
-    private func settingsSection<Content: View>(
-        title: String,
-        @ViewBuilder content: () -> Content
-    ) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text(title)
-                .font(.headline)
-            VStack(alignment: .leading, spacing: 10) {
-                content()
+                Text(viewModel.timecodeBurnOutputMode.description)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
-            .padding(14)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(Color(nsColor: .controlBackgroundColor))
-            .clipShape(RoundedRectangle(cornerRadius: 8))
+
+            Section("文件名改名") {
+                Toggle("启用复制改名按钮", isOn: $viewModel.isFileRenameOptionEnabled)
+                Toggle("复制改名后自动生成配套元数据 CSV", isOn: $viewModel.exportsCompanionCSVForRenamedFiles)
+                    .disabled(!viewModel.isFileRenameOptionEnabled)
+
+                HStack(spacing: 10) {
+                    TextField("前缀", text: $viewModel.renameOutputPrefix)
+                    TextField("后缀", text: $viewModel.renameOutputSuffix)
+                }
+                .disabled(!viewModel.isFileRenameOptionEnabled)
+
+                Text("改名会复制到新文件夹，不修改源文件；文件名来自识别结果或手动输入，同名会自动附加 -1、-2。配套元数据 CSV 会使用改名后的真实文件名作为目标软件匹配键。")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            Section("快捷键") {
+                LabeledContent("打开项目设置", value: "· / ～ / ` / ~")
+                    .font(.body.monospaced())
+            }
+
+            Section("关于 Aquarius") {
+                LabeledContent("版本", value: aquariusDisplayName())
+                LabeledContent("用户", value: NSUserName())
+                Link(destination: aquariusGitHubURL) {
+                    Label("打开 Aquarius GitHub 仓库", systemImage: "safari")
+                }
+                Text("GitHub 仓库：代码、版本说明、发布包与问题反馈均在仓库维护。")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
         }
+        .formStyle(.grouped)
+        .padding(20)
+        .frame(
+            minWidth: 620,
+            idealWidth: 620,
+            maxWidth: 620,
+            minHeight: 520,
+            idealHeight: 680,
+            maxHeight: .infinity,
+            alignment: .topLeading
+        )
+        .background {
+            Button {
+                dismiss()
+            } label: {
+                Text("关闭")
+            }
+            .keyboardShortcut(.cancelAction)
+            .opacity(0.01)
+            .frame(width: 1, height: 1)
+            .accessibilityHidden(true)
+        }
+        .navigationTitle("项目设置 - \(aquariusDisplayName())")
     }
 }
 
@@ -1786,5 +1790,5 @@ private struct StatusBadge: View {
 }
 
 #Preview {
-    ContentView()
+    ContentView(viewModel: AnalysisViewModel())
 }

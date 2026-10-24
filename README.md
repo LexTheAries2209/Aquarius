@@ -58,13 +58,13 @@ V1.1.1 的中文发布说明见 [docs/releases/v1.1.1.zh-CN.md](docs/releases/v1
 
 ### 系统要求
 
-- 当前源码与后续发布版：Apple silicon（M 系列芯片），macOS `13.0` 或更新版本；使用发布版不需要 Xcode。
+- 当前源码与后续发布版：Apple silicon（M 系列芯片），macOS `14.0` 或更新版本；使用发布版不需要 Xcode。
 - 历史 V1.0.3 下载包仍是同时支持 Apple silicon 和 Intel 的 universal 构建；这一兼容范围不代表后续版本。
 - V1.1.1 使用 Apple Development 签名，但不是 Developer ID 公证发行；Gatekeeper 可能要求通过 Finder 右键“打开”或“隐私与安全性”确认。
 - 从源码构建：需要 Xcode，当前工程使用 SwiftUI / AVFoundation / CoreImage / CoreMedia / Vision。
 - 当前源码工程配置：
   - Swift `5.0`
-  - macOS deployment target `13.0`
+  - macOS deployment target `14.0`
 - 可选依赖：MediaInfo CLI（命令名为 `mediainfo`）。Aquarius 当前不内置 MediaInfo CLI；没有安装时，OCR、CSV 导出、复制改名和 TMCD 写入仍可使用，但“当前文件”元数据面板只会显示基础提示。
 - MediaInfo CLI 安装方式：
   - Homebrew：`brew install media-info`
@@ -131,7 +131,7 @@ Avid ALE 导出会生成 tab 分隔的三段式文本：`Heading`、`Column`、`
 
 ### 时间码写入和改名
 
-右下角齿轮按钮会打开“项目设置”，也可直接按 `` · / ～ / ` / ~ ``（无需 Command；输入框编辑时不触发）：
+左下角媒体库底部的小 Dock 提供“设置”、Aquarius 版本与 macOS 用户名、GitHub 仓库入口；也可直接按 `` · / ～ / ` / ~ `` 打开设置（无需 Command；输入框编辑时不触发）：
 
 - “显示载入样片按钮”默认开启，关闭后隐藏顶部样片菜单；此设置会在下次启动时保留。
 - “启动时启用的识别字段”可分别设置文件名、卷号、时间码，保存后从下次启动生效。例如仅勾选时间码，可让软件每次启动只启用时间码识别；主界面的临时开关不会覆盖启动默认值。未设置过时仍默认启用全部字段。
@@ -144,7 +144,7 @@ Avid ALE 导出会生成 tab 分隔的三段式文本：`Heading`、`Column`、`
 - 启用“复制改名按钮”后，可按识别或手动输入的文件名复制到新文件夹。
 - 改名支持统一前缀、后缀；同名文件会自动追加序号。
 - 同时启用时间码烧录和复制改名后，会出现“烧录并改名”按钮。
-- 项目设置底部会显示 GitHub 仓库信息，方便查看版本说明、下载发布包或提交问题反馈。
+- 设置窗口采用 macOS 分组表单样式，底部 Dock 和设置页都保留 GitHub 仓库入口，方便查看版本说明、下载发布包或提交问题反馈。
 
 ### 支持的视频格式
 
@@ -215,13 +215,13 @@ Common use cases:
 
 ### Requirements
 
-- Current source and future releases: Apple silicon (M-series), macOS `13.0` or later; Xcode is not required for release builds.
+- Current source and future releases: Apple silicon (M-series), macOS `14.0` or later; Xcode is not required for release builds.
 - The historical V1.0.3 download remains a universal Apple silicon and Intel build; that compatibility does not apply to future releases.
 - V1.1.1 is Apple Development signed but is not a notarized Developer ID distribution. Gatekeeper may require Finder > Open or approval in Privacy & Security.
 - Source build: Xcode with SwiftUI, AVFoundation, CoreImage, CoreMedia, and Vision support.
 - Current source project settings:
   - Swift `5.0`
-  - macOS deployment target `13.0`
+  - macOS deployment target `14.0`
 - Optional dependency: MediaInfo CLI, available as the `mediainfo` command. Aquarius does not currently bundle MediaInfo CLI; without it, OCR, CSV export, copy/rename, and TMCD writing still work, but the Current File metadata panel will only show a basic prompt.
 - Install MediaInfo CLI:
   - Homebrew: `brew install media-info`
@@ -284,7 +284,7 @@ Avid ALE export generates tab-delimited text with `Heading`, `Column`, and `Data
 
 ### Timecode Writing And Renaming
 
-Open Project Settings from the gear button in the lower-right corner, or press the grave/tilde key (`` ` `` / `~`, including Chinese-input `·` / `～`) without Command. The shortcut does not interrupt text editing.
+Open Project Settings from the small Dock at the bottom-left of the media library, or press the grave/tilde key (`` ` `` / `~`, including Chinese-input `·` / `～`) without Command. The shortcut does not interrupt text editing. The Dock also shows the Aquarius version, macOS user name, and GitHub repository link.
 
 - The sample menu is visible by default. Turn off "显示载入样片按钮" to hide it; this preference persists across launches.
 - Choose filename, roll, and timecode independently under "启动时启用的识别字段" to set the fields enabled at the next launch. Select only timecode for timecode-only projects. Changes to the current session's field switches do not overwrite these defaults; existing installations continue to enable all fields until configured.
@@ -297,7 +297,7 @@ Open Project Settings from the gear button in the lower-right corner, or press t
 - Enable copy-and-rename to copy files into a new folder using recognized or manually entered clip names.
 - Prefixes and suffixes can be configured for renamed outputs.
 - When both timecode writing and renaming are enabled, the app exposes a combined burn-and-rename action.
-- Project Settings now shows the GitHub repository location for release notes, downloadable builds, and issue feedback.
+- The Settings window follows macOS grouped-form styling, and both the bottom-left Dock and Settings retain the GitHub repository location for release notes, downloadable builds, and issue feedback.
 
 ### Supported Video Format
 

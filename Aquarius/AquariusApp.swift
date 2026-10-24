@@ -11,9 +11,18 @@ import SwiftUI
 
 @main
 struct AquariusApp: App {
+    @StateObject private var viewModel = AnalysisViewModel()
+
     var body: some Scene {
         WindowGroup {
-            ContentView()
+            ContentView(viewModel: viewModel)
         }
+        .defaultSize(width: 1433, height: 732)
+
+        Settings {
+            ProjectSettingsView(viewModel: viewModel)
+        }
+        .defaultSize(width: 620, height: 680)
+        .windowResizability(.contentSize)
     }
 }
