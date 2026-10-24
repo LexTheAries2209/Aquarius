@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-only
 
+import CoreGraphics
 import Foundation
 
 private struct SmokeCase {
@@ -14,6 +15,8 @@ private struct SmokeCase {
 struct RunAsyncAnalyzerSmoke {
     static func main() async throws {
         try verifyParserRegressions()
+        try verifyStrictTimecodeParsing()
+        try verifyTimecodeCropBoundary()
         try verifyCandidateRanking()
         try verifyAdaptivePreprocessing()
         try verifyAdjacentTimecodeSequences()
@@ -133,6 +136,14 @@ struct RunAsyncAnalyzerSmoke {
                 OCRTextCandidate(text: "10:04:02:06", confidence: 0.70)
             ]
         )
+        let labeledTimecode = OCRCandidateRanker.bestCandidate(
+            for: .timecode,
+            candidates: [OCRTextCandidate(text: "A 14:10:10:10", confidence: 1)]
+        )
+        let ambiguousTimecode = OCRCandidateRanker.bestCandidate(
+            for: .timecode,
+            candidates: [OCRTextCandidate(text: "14:10:10:10 15:10:10:10", confidence: 1)]
+        )
 
         let failures = [
             OCRFieldParser.clipName(from: fileName.text) == "A006C001"
@@ -140,13 +151,66 @@ struct RunAsyncAnalyzerSmoke {
                 : "candidate ranker selected invalid file name \(fileName.text)",
             OCRFieldParser.timecode(from: timecode.text, fps: 24)?.description == "10:04:02:06"
                 ? nil
-                : "candidate ranker selected invalid timecode \(timecode.text)"
+                : "candidate ranker selected invalid timecode \(timecode.text)",
+            labeledTimecode.text == "14:10:10:10"
+                ? nil
+                : "timecode candidate must contain only the SMPTE value, got \(labeledTimecode.text)",
+            labeledTimecode.rawText == "A 14:10:10:10"
+                ? nil
+                : "original OCR text must remain available for review",
+            ambiguousTimecode.formatScore < 1
+                ? nil
+                : "two distinct timecodes in one candidate must not be treated as unambiguous"
         ].compactMap { $0 }
 
         if !failures.isEmpty {
             throw SmokeError.failedFiles(failures)
         }
         print("OCR candidate ranking cases passed")
+    }
+
+    private static func verifyStrictTimecodeParsing() throws {
+        let invalid = [
+            "A 14:10:10:10", "A:14:10:10:10", "14:10:10:10:A",
+            ":14:10:10:10", "14:10:10:10:", "14::10:10:10",
+            "1:10:10:10", "14:1:10:10", "+1:10:10:10",
+            "14;10:10:10", "14:10;10:10", "14: 10:10:10",
+            "24:00:00:00", "14:60:10:10", "14:10:60:10", "14:10:10:25"
+        ]
+        var failures = invalid.compactMap { text -> String? in
+            Timecode.parse(text, fps: 25) == nil ? nil : "strict parser accepted \(text)"
+        }
+        for text in ["00:00:00:00", "14:10:10:10", "23:59:59:24", " 14:10:10:10\n"] {
+            if Timecode.parse(text, fps: 25) == nil {
+                failures.append("strict parser rejected \(text)")
+            }
+        }
+        if !failures.isEmpty {
+            throw SmokeError.failedFiles(failures)
+        }
+        print("Strict SMPTE timecode parsing cases passed")
+    }
+
+    private static func verifyTimecodeCropBoundary() throws {
+        let context = CGContext(
+            data: nil, width: 1000, height: 1000, bitsPerComponent: 8,
+            bytesPerRow: 0, space: CGColorSpaceCreateDeviceRGB(),
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        )
+        guard let image = context?.makeImage() else {
+            throw SmokeError.failedFiles(["could not create crop fixture"])
+        }
+        let processor = ROIImageProcessor()
+        let rect = CGRect(x: 0.5, y: 0.5, width: 0.2, height: 0.1)
+        let tight = processor.crop(image, to: rect, kind: .timecode)
+        let expanded = processor.crop(image, to: rect, kind: .clipName)
+        let outside = processor.crop(image, to: CGRect(x: 2, y: 2, width: 1, height: 1), kind: .timecode)
+        guard tight?.width == 200, tight?.height == 100,
+              expanded?.width == 240, expanded?.height == 120,
+              outside == nil else {
+            throw SmokeError.failedFiles(["timecode crop must respect the selection; other fields retain their margin"])
+        }
+        print("Timecode crop boundary cases passed")
     }
 
     private static func verifyAdaptivePreprocessing() throws {

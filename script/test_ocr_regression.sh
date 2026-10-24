@@ -4,7 +4,8 @@ set -euo pipefail
 
 PROJECT_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 TASK_TEMP_DIR="$(mktemp -d "${TMPDIR:-/tmp}/aquarius-ocr-regression.XXXXXX")"
-trap '/bin/rm -rf "$TASK_TEMP_DIR"' EXIT
+# Preserve compiler output and caches for diagnosis; never delete test artifacts.
+trap 'printf "OCR regression artifacts: %s\n" "$TASK_TEMP_DIR"' EXIT
 
 export SWIFT_MODULECACHE_PATH="$TASK_TEMP_DIR/swift-module-cache"
 export CLANG_MODULE_CACHE_PATH="$TASK_TEMP_DIR/clang-module-cache"

@@ -78,6 +78,7 @@ struct OCRSample: Identifiable, Sendable {
     let requestedSeconds: Double
     let actualSeconds: Double
     let rawText: String
+    let normalizedText: String?
     let confidence: Double
     let formatScore: Double
     let candidateMargin: Double
@@ -97,6 +98,7 @@ struct OCRSample: Identifiable, Sendable {
         actualSeconds: Double,
         rawText: String,
         confidence: Double,
+        normalizedText: String? = nil,
         formatScore: Double = 0,
         candidateMargin: Double = 0,
         preprocessingAgreement: Double = 0,
@@ -113,6 +115,7 @@ struct OCRSample: Identifiable, Sendable {
         self.requestedSeconds = requestedSeconds
         self.actualSeconds = actualSeconds
         self.rawText = rawText
+        self.normalizedText = normalizedText
         self.confidence = confidence
         self.formatScore = formatScore
         self.candidateMargin = candidateMargin
@@ -125,6 +128,8 @@ struct OCRSample: Identifiable, Sendable {
         self.timecodeFrameOffset = timecodeFrameOffset
         self.timecodeSampleStatus = timecodeSampleStatus
     }
+
+    nonisolated var text: String { normalizedText ?? rawText }
 }
 
 struct Timecode: Equatable, Comparable, CustomStringConvertible, Sendable {
@@ -231,11 +236,18 @@ struct Timecode: Equatable, Comparable, CustomStringConvertible, Sendable {
             return nil
         }
 
+        // Validate the entire label before converting; compactMap alone silently
+        // discards malformed components such as the "A" in "A:14:10:10:10".
+        guard trimmed.range(
+            of: #"^[0-9]{2}:[0-9]{2}:[0-9]{2}[:;][0-9]{2}$"#,
+            options: .regularExpression
+        ) != nil else {
+            return nil
+        }
         let normalized = trimmed.replacingOccurrences(of: ";", with: ":")
         let parts = normalized
             .split(separator: ":", omittingEmptySubsequences: false)
-            .map { String($0).trimmingCharacters(in: .whitespacesAndNewlines) }
-            .compactMap(Int.init)
+            .compactMap { Int(String($0)) }
 
         guard parts.count == 4,
               (0...23).contains(parts[0]),

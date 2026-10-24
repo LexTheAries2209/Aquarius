@@ -177,14 +177,15 @@ struct OCRClipAnalyzer {
             region: region,
             requestedSeconds: requestedSeconds,
             actualSeconds: safeDuration(frameResult.actualTime.seconds, fallback: requestedSeconds),
-            rawText: candidate.text,
+            rawText: candidate.rawText,
             confidence: candidate.confidence,
+            normalizedText: region.kind == .timecode ? candidate.text : nil,
             formatScore: candidate.formatScore,
             candidateMargin: candidate.candidateMargin,
             preprocessingAgreement: candidate.preprocessingAgreement,
             characterCorrectionCount: OCRCandidateRanker.positionCorrectionCount(
                 kind: region.kind,
-                text: candidate.text
+                text: candidate.rawText
             ),
             actualTimeValue: frameResult.actualTime.value,
             actualTimeTimescale: frameResult.actualTime.timescale,
@@ -204,7 +205,13 @@ struct OCRClipAnalyzer {
     }
 
     nonisolated private func recognize(_ frame: CGImage, in region: OCRRegion) -> RecognizedTextCandidate? {
-        guard let expandedCrop = imageProcessor.crop(frame, to: region.normalizedRect, expanded: true),
+        // A timecode ROI is a hard boundary: expanding it can capture a camera
+        // letter, label, or a second timecode outside the user's selection.
+        guard let expandedCrop = imageProcessor.crop(
+            frame,
+            to: region.normalizedRect,
+            kind: region.kind
+        ),
               let primaryImage = imageProcessor.preprocess(expandedCrop, variant: .balanced),
               let primaryCandidate = try? recognizer.recognize(primaryImage, kind: region.kind) else {
             return nil
@@ -389,12 +396,20 @@ enum OCRImagePreprocessingVariant {
     case threshold
 }
 
-private struct ROIImageProcessor {
-    // Expand every OCR ROI by 10% per edge to retain nearby anti-aliased glyph pixels.
+struct ROIImageProcessor {
+    // Non-timecode fields retain the existing anti-aliasing capture margin.
     nonisolated private static let captureExpansionPerEdge: CGFloat = 0.10
     private let context = CIContext()
 
     nonisolated init() {}
+
+    nonisolated func crop(
+        _ image: CGImage,
+        to normalizedRect: CGRect,
+        kind: OCRFieldKind
+    ) -> CGImage? {
+        crop(image, to: normalizedRect, expanded: kind != .timecode)
+    }
 
     nonisolated func crop(
         _ image: CGImage,
@@ -413,6 +428,9 @@ private struct ROIImageProcessor {
             cropRect = normalizedRect
         }
         let clamped = cropRect.intersection(CGRect(x: 0, y: 0, width: 1, height: 1))
+        guard !clamped.isNull, !clamped.isEmpty else {
+            return nil
+        }
 
         let pixelRect = CGRect(
             x: clamped.minX * width,
@@ -500,10 +518,27 @@ struct OCRTextCandidate: Sendable {
 
 struct RecognizedTextCandidate: Sendable {
     let text: String
+    let rawText: String
     let confidence: Double
     let formatScore: Double
     let candidateMargin: Double
     let preprocessingAgreement: Double
+
+    nonisolated init(
+        text: String,
+        confidence: Double,
+        formatScore: Double,
+        candidateMargin: Double,
+        preprocessingAgreement: Double,
+        rawText: String? = nil
+    ) {
+        self.text = text
+        self.rawText = rawText ?? text
+        self.confidence = confidence
+        self.formatScore = formatScore
+        self.candidateMargin = candidateMargin
+        self.preprocessingAgreement = preprocessingAgreement
+    }
 }
 
 protocol OCRTextRecognizing {
@@ -656,7 +691,10 @@ enum OCRCandidateRanker {
         for kind: OCRFieldKind,
         candidates: [OCRTextCandidate]
     ) -> RecognizedTextCandidate {
-        let scored = bestCandidateForCanonicalValue(kind: kind, candidates: candidates)
+        let eligible = kind == .timecode
+            ? candidates.filter { OCRFieldParser.normalizedTimecodeText(from: $0.text) != nil }
+            : candidates
+        let scored = bestCandidateForCanonicalValue(kind: kind, candidates: eligible)
             .sorted { lhs, rhs in
                 if abs(lhs.score - rhs.score) < 0.0001 {
                     return lhs.candidate.confidence > rhs.candidate.confidence
@@ -669,16 +707,20 @@ enum OCRCandidateRanker {
                 confidence: 0,
                 formatScore: 0,
                 candidateMargin: 0,
-                preprocessingAgreement: 0
+                preprocessingAgreement: 0,
+                rawText: candidates.max { $0.confidence < $1.confidence }?.text
             )
         }
 
         return RecognizedTextCandidate(
-            text: best.candidate.text,
+            text: kind == .timecode
+                ? (OCRFieldParser.normalizedTimecodeText(from: best.candidate.text) ?? "")
+                : best.candidate.text,
             confidence: best.candidate.confidence,
             formatScore: best.formatScore,
             candidateMargin: max(0, best.score - (scored.dropFirst().first?.score ?? 0)),
-            preprocessingAgreement: 1
+            preprocessingAgreement: 1,
+            rawText: best.candidate.text
         )
     }
 
@@ -770,7 +812,8 @@ enum OCRCandidateRanker {
     }
 
     nonisolated static func positionCorrectionCount(kind: OCRFieldKind, text: String) -> Int {
-        let rawCharacters = Array(text.uppercased().filter { $0.isLetter || $0.isNumber })
+        let source = kind == .timecode ? (OCRFieldParser.timecodeToken(from: text) ?? text) : text
+        let rawCharacters = Array(source.uppercased().filter { $0.isLetter || $0.isNumber })
         let canonicalCharacters = Array(canonicalValue(kind: kind, text: text).filter { $0.isLetter || $0.isNumber })
         guard rawCharacters.count == canonicalCharacters.count else {
             return 0
@@ -795,7 +838,7 @@ enum OCRPreprocessingResolver {
             || candidate.formatScore < 1
             || candidate.confidence < 0.78
             || candidate.candidateMargin < 0.05
-            || usesCharacterCorrection(kind: kind, text: candidate.text)
+            || usesCharacterCorrection(kind: kind, text: candidate.rawText)
     }
 
     nonisolated static func resolve(
@@ -804,7 +847,10 @@ enum OCRPreprocessingResolver {
     ) -> RecognizedTextCandidate {
         let nonEmpty = candidates.filter { !$0.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
         guard let primary = nonEmpty.first else {
-            return OCRCandidateRanker.bestCandidate(for: kind, candidates: [])
+            return OCRCandidateRanker.bestCandidate(
+                for: kind,
+                candidates: candidates.map { OCRTextCandidate(text: $0.rawText, confidence: $0.confidence) }
+            )
         }
 
         let grouped = Dictionary(grouping: nonEmpty) {
@@ -816,11 +862,11 @@ enum OCRPreprocessingResolver {
         if primary.formatScore == 1 {
             let primaryCorrectionCount = OCRCandidateRanker.characterCorrectionCount(
                 kind: kind,
-                text: primary.text
+                text: primary.rawText
             )
             let cleanerGroups = grouped.filter { _, values in
                 values.contains {
-                    OCRCandidateRanker.characterCorrectionCount(kind: kind, text: $0.text) < primaryCorrectionCount
+                    OCRCandidateRanker.characterCorrectionCount(kind: kind, text: $0.rawText) < primaryCorrectionCount
                 }
             }
 
@@ -834,8 +880,8 @@ enum OCRPreprocessingResolver {
 
         let selectedGroup = grouped[selectedCanonical] ?? [primary]
         let selected = selectedGroup.min { lhs, rhs in
-            let lhsCorrectionCount = OCRCandidateRanker.characterCorrectionCount(kind: kind, text: lhs.text)
-            let rhsCorrectionCount = OCRCandidateRanker.characterCorrectionCount(kind: kind, text: rhs.text)
+            let lhsCorrectionCount = OCRCandidateRanker.characterCorrectionCount(kind: kind, text: lhs.rawText)
+            let rhsCorrectionCount = OCRCandidateRanker.characterCorrectionCount(kind: kind, text: rhs.rawText)
             if lhsCorrectionCount != rhsCorrectionCount {
                 return lhsCorrectionCount < rhsCorrectionCount
             }
@@ -850,7 +896,8 @@ enum OCRPreprocessingResolver {
             confidence: selected.confidence,
             formatScore: selected.formatScore,
             candidateMargin: selected.candidateMargin,
-            preprocessingAgreement: Double(agreementCount) / Double(nonEmpty.count)
+            preprocessingAgreement: Double(agreementCount) / Double(nonEmpty.count),
+            rawText: selected.rawText
         )
     }
 
@@ -1593,6 +1640,7 @@ private enum OCRConsensusResolver {
             actualSeconds: sample.actualSeconds,
             rawText: sample.rawText,
             confidence: sample.confidence,
+            normalizedText: sample.normalizedText,
             formatScore: sample.formatScore,
             candidateMargin: sample.candidateMargin,
             preprocessingAgreement: sample.preprocessingAgreement,
@@ -1767,17 +1815,7 @@ enum OCRFieldParser {
         playbackFrameRate: Double? = nil,
         isDropFrame: Bool = false
     ) -> Timecode? {
-        let normalized = rawText
-            .uppercased()
-            .replacingOccurrences(of: "O", with: "0")
-            .replacingOccurrences(of: "I", with: "1")
-            .replacingOccurrences(of: "L", with: "1")
-            .replacingOccurrences(of: "S", with: "5")
-
-        guard let match = firstMatch(
-            in: normalized,
-            pattern: #"\b([0-2]\d):([0-5]\d):([0-5]\d)[:;]([0-9]{2})\b"#
-        ) else {
+        guard let match = normalizedTimecodeText(from: rawText) else {
             return nil
         }
 
@@ -1787,6 +1825,41 @@ enum OCRFieldParser {
             playbackFrameRate: playbackFrameRate,
             isDropFrame: isDropFrame
         )
+    }
+
+    nonisolated static func normalizedTimecodeText(from rawText: String) -> String? {
+        guard let token = timecodeToken(from: rawText) else {
+            return nil
+        }
+        let normalized = normalizeTimecodeDigits(token)
+        guard Timecode.parse(normalized, fps: 30) != nil else {
+            return nil
+        }
+        // Preserve the separator so an explicit DF setting can still validate it.
+        return normalized
+    }
+
+    nonisolated static func timecodeToken(from rawText: String) -> String? {
+        let upper = rawText.uppercased()
+        let pattern = #"(?<![\w:;])[0-9OILS]{2}:[0-9OILS]{2}:[0-9OILS]{2}[:;][0-9OILS]{2}(?![\w:;])"#
+        guard let regex = try? NSRegularExpression(pattern: pattern) else {
+            return nil
+        }
+        let tokens = regex.matches(in: upper, range: NSRange(upper.startIndex..<upper.endIndex, in: upper))
+            .compactMap { Range($0.range, in: upper).map { String(upper[$0]) } }
+        // A wider selection containing different TC readings is ambiguous.
+        guard Set(tokens.map(normalizeTimecodeDigits)).count == 1 else {
+            return nil
+        }
+        return tokens.first
+    }
+
+    nonisolated private static func normalizeTimecodeDigits(_ text: String) -> String {
+        text
+            .replacingOccurrences(of: "O", with: "0")
+            .replacingOccurrences(of: "I", with: "1")
+            .replacingOccurrences(of: "L", with: "1")
+            .replacingOccurrences(of: "S", with: "5")
     }
 
     nonisolated private static func normalizedRollToken(_ token: String) -> String? {

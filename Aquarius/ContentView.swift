@@ -988,10 +988,11 @@ struct ContentView: View {
                                     .font(.caption.monospaced())
                                     .foregroundStyle(sampleDeviationColor(sample))
                                     .frame(width: 54, alignment: .trailing)
-                                Text(sample.rawText.isEmpty ? "未识别" : sample.rawText.replacingOccurrences(of: "\n", with: " / "))
+                                Text(sample.text.isEmpty ? "未识别" : sample.text.replacingOccurrences(of: "\n", with: " / "))
                                     .font(.caption.monospaced())
                                     .textSelection(.enabled)
                                     .lineLimit(2)
+                                    .help("原始 OCR：\(sample.rawText.isEmpty ? "未识别" : sample.rawText)")
                                 Spacer()
                             }
                             .padding(.vertical, 2)
