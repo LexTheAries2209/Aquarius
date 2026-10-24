@@ -95,6 +95,9 @@ final class AnalysisViewModel: ObservableObject {
     @Published var showsTimecodeDiagnosticsDetails = false {
         didSet { persistProjectOutputSettings() }
     }
+    @Published var showsSampleLoader = true {
+        didSet { persistProjectOutputSettings() }
+    }
     @Published var renameOutputPrefix = "" {
         didSet { persistProjectOutputSettings() }
     }
@@ -2583,6 +2586,7 @@ final class AnalysisViewModel: ObservableObject {
         isFileRenameOptionEnabled = settings.isFileRenameEnabled
         exportsCompanionCSVForRenamedFiles = settings.exportsCompanionCSVForRenamedFiles
         showsTimecodeDiagnosticsDetails = settings.showsTimecodeDiagnosticsDetails
+        showsSampleLoader = settings.showsSampleLoader
         renameOutputPrefix = settings.renamePrefix
         renameOutputSuffix = settings.renameSuffix
         isLoadingProjectOutputSettings = false
@@ -2607,6 +2611,7 @@ final class AnalysisViewModel: ObservableObject {
                 isFileRenameEnabled: isFileRenameOptionEnabled,
                 exportsCompanionCSVForRenamedFiles: exportsCompanionCSVForRenamedFiles,
                 showsTimecodeDiagnosticsDetails: showsTimecodeDiagnosticsDetails,
+                showsSampleLoader: showsSampleLoader,
                 renamePrefix: renameOutputPrefix,
                 renameSuffix: renameOutputSuffix
             )

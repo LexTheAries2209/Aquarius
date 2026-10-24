@@ -76,7 +76,7 @@ V1.1.1 的中文发布说明见 [docs/releases/v1.1.1.zh-CN.md](docs/releases/v1
 1. 用 Xcode 打开 `Aquarius.xcodeproj`。
 2. 选择 `Aquarius` scheme。
 3. 点击 Run，或按 `Command-R`。
-4. 第一次启动会自动载入内置样片，也可以通过顶部“载入样片”菜单切换测试素材。
+4. 启动时媒体列表为空，不会自动载入样片；可通过顶部“载入样片”菜单手动选择测试素材。
 
 ### 基本使用流程
 
@@ -133,6 +133,7 @@ Avid ALE 导出会生成 tab 分隔的三段式文本：`Heading`、`Column`、`
 
 右下角齿轮按钮会打开“项目设置”：
 
+- “显示载入样片按钮”默认开启，关闭后隐藏顶部样片菜单；此设置会在下次启动时保留。
 - 启用“显示时间码检测详情”后，右侧检查器会显示视频帧率、识别 TC 帧率、TMCD 对比、一致性和漂移信息；关闭时只保留更简洁的源时间码帧率控制和必要风险提示。
 - 启用“时间码烧录按钮”后，可选择“烧录到源文件”或“复制到新文件夹并烧录”。
 - “烧录到源文件”会直接修改列表内原始 MOV / QuickTime 文件的 TMCD sample。请先备份原始文件。
@@ -231,7 +232,7 @@ Common use cases:
 1. Open `Aquarius.xcodeproj` in Xcode.
 2. Select the `Aquarius` scheme.
 3. Press Run, or use `Command-R`.
-4. A bundled sample loads on first launch. The sample menu can switch between included test clips.
+4. The media list starts empty; samples are never loaded automatically. Use the sample menu to manually open an included test clip.
 
 ### Basic Workflow
 
@@ -284,6 +285,7 @@ Avid ALE export generates tab-delimited text with `Heading`, `Column`, and `Data
 
 Open Project Settings from the gear button in the lower-right corner, or press `Command-P`.
 
+- The sample menu is visible by default. Turn off "显示载入样片按钮" to hide it; this preference persists across launches.
 - Enable detailed timecode diagnostics to show video frame rate, recognized TC rate, TMCD comparison, consistency, and drift details in the inspector; when disabled, the UI keeps only the source TC rate control and necessary risk warnings.
 - Enable the timecode burn button to write recovered start TC into TMCD metadata.
 - Source-file mode directly modifies the original MOV / QuickTime file. Back up originals first.

@@ -463,6 +463,7 @@ struct ProjectOutputSettings: Codable, Equatable, Sendable {
     var isFileRenameEnabled: Bool
     var exportsCompanionCSVForRenamedFiles: Bool
     var showsTimecodeDiagnosticsDetails: Bool
+    var showsSampleLoader: Bool
     var renamePrefix: String
     var renameSuffix: String
 
@@ -472,6 +473,7 @@ struct ProjectOutputSettings: Codable, Equatable, Sendable {
         isFileRenameEnabled: Bool = false,
         exportsCompanionCSVForRenamedFiles: Bool = false,
         showsTimecodeDiagnosticsDetails: Bool = false,
+        showsSampleLoader: Bool = true,
         renamePrefix: String = "",
         renameSuffix: String = ""
     ) {
@@ -480,6 +482,7 @@ struct ProjectOutputSettings: Codable, Equatable, Sendable {
         self.isFileRenameEnabled = isFileRenameEnabled
         self.exportsCompanionCSVForRenamedFiles = exportsCompanionCSVForRenamedFiles
         self.showsTimecodeDiagnosticsDetails = showsTimecodeDiagnosticsDetails
+        self.showsSampleLoader = showsSampleLoader
         self.renamePrefix = renamePrefix
         self.renameSuffix = renameSuffix
     }
@@ -490,6 +493,7 @@ struct ProjectOutputSettings: Codable, Equatable, Sendable {
         case isFileRenameEnabled
         case exportsCompanionCSVForRenamedFiles
         case showsTimecodeDiagnosticsDetails
+        case showsSampleLoader
         case renamePrefix
         case renameSuffix
     }
@@ -501,6 +505,8 @@ struct ProjectOutputSettings: Codable, Equatable, Sendable {
         isFileRenameEnabled = try container.decodeIfPresent(Bool.self, forKey: .isFileRenameEnabled) ?? false
         exportsCompanionCSVForRenamedFiles = try container.decodeIfPresent(Bool.self, forKey: .exportsCompanionCSVForRenamedFiles) ?? false
         showsTimecodeDiagnosticsDetails = try container.decodeIfPresent(Bool.self, forKey: .showsTimecodeDiagnosticsDetails) ?? false
+        // Existing settings files keep the sample menu available after upgrading.
+        showsSampleLoader = try container.decodeIfPresent(Bool.self, forKey: .showsSampleLoader) ?? true
         renamePrefix = try container.decodeIfPresent(String.self, forKey: .renamePrefix) ?? ""
         renameSuffix = try container.decodeIfPresent(String.self, forKey: .renameSuffix) ?? ""
     }

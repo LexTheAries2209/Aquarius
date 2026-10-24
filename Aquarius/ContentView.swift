@@ -50,11 +50,6 @@ struct ContentView: View {
         .sheet(isPresented: $isShowingProjectSettings) {
             ProjectSettingsView(viewModel: viewModel, isPresented: $isShowingProjectSettings)
         }
-        .onAppear {
-            if viewModel.mediaItems.isEmpty {
-                viewModel.loadSample()
-            }
-        }
     }
 
     private var topBar: some View {
@@ -70,14 +65,16 @@ struct ContentView: View {
 
             Spacer()
 
-            Menu {
-                ForEach(viewModel.sampleVideos) { sample in
-                    Button(sample.displayName) {
-                        viewModel.loadSample(sample)
+            if viewModel.showsSampleLoader {
+                Menu {
+                    ForEach(viewModel.sampleVideos) { sample in
+                        Button(sample.displayName) {
+                            viewModel.loadSample(sample)
+                        }
                     }
+                } label: {
+                    Label("载入样片", systemImage: "film")
                 }
-            } label: {
-                Label("载入样片", systemImage: "film")
             }
 
             Button {
@@ -257,20 +254,8 @@ struct ContentView: View {
             Divider()
 
             if viewModel.mediaItems.isEmpty {
-                VStack(spacing: 10) {
-                    Image(systemName: "film.stack")
-                        .font(.system(size: 28))
-                        .foregroundStyle(.secondary)
-                    Text("导入 Qtake 视频文件夹")
-                        .font(.callout.weight(.medium))
-                    Text("左侧列表会保存待提取素材，导出时只包含列表中仍保留的视频。")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .multilineTextAlignment(.center)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-                .padding(22)
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                Color.clear
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 ScrollView {
                     LazyVStack(spacing: 6) {
@@ -1164,6 +1149,10 @@ private struct ProjectSettingsView: View {
 
             ScrollView {
                 VStack(alignment: .leading, spacing: 22) {
+                    settingsSection(title: "界面") {
+                        Toggle("显示载入样片按钮", isOn: $viewModel.showsSampleLoader)
+                    }
+
                     settingsSection(title: "时间码显示") {
                         Toggle("显示时间码检测详情", isOn: $viewModel.showsTimecodeDiagnosticsDetails)
 
