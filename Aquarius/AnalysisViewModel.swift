@@ -59,6 +59,7 @@ final class AnalysisViewModel: ObservableObject {
     @Published var isPlaying = false
     @Published var currentPlaybackSeconds = 0.0
     @Published var playbackDuration = 0.0
+    @Published private(set) var videoPlaybackFrameRate = 0.0
     @Published var analyzingItemID: MediaQueueItem.ID?
     @Published var isBatchAnalyzing = false
     @Published var isBurningTimecode = false
@@ -104,6 +105,12 @@ final class AnalysisViewModel: ObservableObject {
     private var securityScopedURL: URL?
     private var isUsingSecurityScopedAccess = false
     private var playerTimeObserver: Any?
+    private var playerItemTimeObserver: AnyCancellable?
+    private var videoFrameDuration = CMTime.invalid
+    private var videoFrameRange = CMTimeRange.invalid
+    private var videoTimeScale: CMTimeScale = 600
+    private var pendingFrameStepTarget: CMTime?
+    private var frameStepGeneration: UInt = 0
     private var previewImageTask: Task<Void, Never>?
     private var playbackDurationTask: Task<Void, Never>?
     private var sourceMetadataTasks: [MediaQueueItem.ID: Task<Void, Never>] = [:]
@@ -215,7 +222,8 @@ final class AnalysisViewModel: ObservableObject {
     }
 
     var currentFrameText: String {
-        "\(currentFrameOffset)"
+        // This is a video frame index, independent of the source timecode base.
+        "\(videoFrameIndex(at: currentPlaybackSeconds))"
     }
 
     var currentSourceTimecodeText: String {
@@ -754,6 +762,43 @@ final class AnalysisViewModel: ObservableObject {
         isPlaying = false
     }
 
+    func stepFrame(by direction: Int) {
+        guard direction == -1 || direction == 1,
+              canStepVideoFrames, let player else {
+            return
+        }
+        pausePlayback()
+        // Keep the requested target while a seek is pending so rapid presses
+        // accumulate, rather than all starting from the last displayed frame.
+        let origin = pendingFrameStepTarget ?? player.currentTime()
+        let currentFrame = videoFrameIndex(at: origin.seconds)
+        let targetFrame = min(max(currentFrame + direction, 0), max(0, videoFrameCount - 1))
+        let target = CMTimeAdd(
+            videoFrameRange.start,
+            CMTimeMultiply(videoFrameDuration, multiplier: Int32(clamping: targetFrame))
+        )
+        frameStepGeneration &+= 1
+        let generation = frameStepGeneration
+        pendingFrameStepTarget = target
+        currentPlaybackSeconds = max(0, target.seconds)
+        player.seek(to: target, toleranceBefore: .zero, toleranceAfter: .zero) { [weak self, weak player] _ in
+            Task { @MainActor [weak self, weak player] in
+                guard let self, let player, self.player === player,
+                      self.frameStepGeneration == generation else { return }
+                self.pendingFrameStepTarget = nil
+                let seconds = player.currentTime().seconds
+                if seconds.isFinite { self.currentPlaybackSeconds = max(0, seconds) }
+            }
+        }
+    }
+
+    var canStepVideoFrames: Bool {
+        player?.currentItem?.status == .readyToPlay
+            && videoFrameDuration.isNumeric && videoFrameDuration.seconds > 0
+            && videoFrameRange.isValid && videoFrameRange.duration.isNumeric
+            && videoFrameRange.duration.seconds > 0
+    }
+
     func shuttleBackward() {
         guard let player else {
             return
@@ -791,11 +836,16 @@ final class AnalysisViewModel: ObservableObject {
     }
 
     func seek(to seconds: Double) {
+        pendingFrameStepTarget = nil
+        frameStepGeneration &+= 1
         let upperBound = playbackDuration > 0 ? playbackDuration : max(currentPlaybackSeconds, 0)
         let clampedSeconds = min(max(seconds, 0), upperBound)
         currentPlaybackSeconds = clampedSeconds
         player?.seek(
-            to: CMTime(seconds: clampedSeconds, preferredTimescale: 600),
+            to: CMTime(
+                seconds: clampedSeconds,
+                preferredTimescale: videoTimeScale
+            ),
             toleranceBefore: .zero,
             toleranceAfter: .zero
         )
@@ -1642,6 +1692,21 @@ final class AnalysisViewModel: ObservableObject {
         }
     }
 
+    private var videoFrameCount: Int {
+        guard videoFrameDuration.isNumeric, videoFrameDuration.seconds > 0,
+              videoFrameRange.isValid, videoFrameRange.duration.isNumeric else { return 0 }
+        return max(0, Int(ceil(videoFrameRange.duration.seconds / videoFrameDuration.seconds - 0.0000001)))
+    }
+
+    private func videoFrameIndex(at seconds: Double) -> Int {
+        guard seconds.isFinite, videoFrameCount > 0 else { return 0 }
+        let position = (seconds - videoFrameRange.start.seconds) / videoFrameDuration.seconds
+        // AVPlayer can report a frame boundary one media-clock tick early.
+        let clockScale = max(videoTimeScale, player?.currentTime().timescale ?? videoTimeScale)
+        let clockTolerance = min(0.25, 1.0 / Double(clockScale) / videoFrameDuration.seconds) + 0.0000001
+        return min(max(0, Int(floor(position + clockTolerance))), videoFrameCount - 1)
+    }
+
     private var currentFrameOffset: Int {
         let playbackFrameRate = selectedMediaItem.map(timecodePlaybackFrameRateForManualEntry) ?? 24
         return max(0, Int(floor(currentPlaybackSeconds * playbackFrameRate)))
@@ -2117,6 +2182,12 @@ final class AnalysisViewModel: ObservableObject {
         isPlaying = false
         currentPlaybackSeconds = 0
         playbackDuration = 0
+        videoPlaybackFrameRate = 0
+        videoFrameDuration = .invalid
+        videoFrameRange = .invalid
+        videoTimeScale = 600
+        pendingFrameStepTarget = nil
+        frameStepGeneration &+= 1
         errorMessage = nil
         previewDiagnosticMessage = nil
         previewImage = nil
@@ -2182,6 +2253,12 @@ final class AnalysisViewModel: ObservableObject {
         isPlaying = false
         currentPlaybackSeconds = 0
         playbackDuration = 0
+        videoPlaybackFrameRate = 0
+        videoFrameDuration = .invalid
+        videoFrameRange = .invalid
+        videoTimeScale = 600
+        pendingFrameStepTarget = nil
+        frameStepGeneration &+= 1
         previewDiagnosticMessage = nil
     }
 
@@ -2194,6 +2271,16 @@ final class AnalysisViewModel: ObservableObject {
                 }
                 let seconds = duration.seconds
                 self?.playbackDuration = seconds.isFinite ? max(seconds, 0) : 0
+                guard let track = try await asset.loadTracks(withMediaType: .video).first else { return }
+                let rate = try await track.load(.nominalFrameRate)
+                let frameDuration = try await track.load(.minFrameDuration)
+                let frameRange = try await track.load(.timeRange)
+                let naturalTimeScale = try await track.load(.naturalTimeScale)
+                guard !Task.isCancelled else { return }
+                self?.videoFrameDuration = frameDuration
+                self?.videoFrameRange = frameRange
+                self?.videoTimeScale = max(1, naturalTimeScale)
+                self?.videoPlaybackFrameRate = rate.isFinite ? max(Double(rate), 0) : 0
             } catch {
                 self?.playbackDuration = 0
             }
@@ -2230,13 +2317,25 @@ final class AnalysisViewModel: ObservableObject {
     }
 
     private func installPlaybackTimeObserver(for player: AVPlayer) {
+        playerItemTimeObserver = NotificationCenter.default
+            .publisher(for: AVPlayerItem.timeJumpedNotification, object: player.currentItem)
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self, weak player] _ in
+                MainActor.assumeIsolated {
+                    let seconds = player?.currentTime().seconds ?? 0
+                    if seconds.isFinite, self?.pendingFrameStepTarget == nil {
+                        self?.currentPlaybackSeconds = max(seconds, 0)
+                    }
+                    self?.isPlaying = player?.rate != 0
+                }
+            }
         playerTimeObserver = player.addPeriodicTimeObserver(
             forInterval: CMTime(seconds: 0.05, preferredTimescale: 600),
             queue: .main
         ) { [weak self, weak player] time in
             MainActor.assumeIsolated {
                 let seconds = time.seconds
-                if seconds.isFinite {
+                if seconds.isFinite, self?.pendingFrameStepTarget == nil {
                     self?.currentPlaybackSeconds = max(seconds, 0)
                 }
                 self?.isPlaying = player?.rate != 0
@@ -2245,6 +2344,7 @@ final class AnalysisViewModel: ObservableObject {
     }
 
     private func removePlayerTimeObserver() {
+        playerItemTimeObserver = nil
         guard let playerTimeObserver else {
             return
         }

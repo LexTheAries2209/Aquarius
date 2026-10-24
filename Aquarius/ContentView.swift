@@ -39,6 +39,13 @@ struct ContentView: View {
         .overlay(alignment: .bottomTrailing) {
             projectSettingsLauncher
         }
+        .background {
+            FrameStepKeyHandler(
+                isEnabled: { viewModel.canStepVideoFrames },
+                onStep: { viewModel.stepFrame(by: $0) }
+            )
+            .frame(width: 0, height: 0)
+        }
         .sheet(isPresented: $isShowingProjectSettings) {
             ProjectSettingsView(viewModel: viewModel, isPresented: $isShowingProjectSettings)
         }
