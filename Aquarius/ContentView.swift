@@ -346,12 +346,6 @@ struct ContentView: View {
             VStack(spacing: 8) {
                 HStack(spacing: 10) {
                     Button {
-                        viewModel.seekToStart()
-                    } label: {
-                        Label("开头", systemImage: "backward.end")
-                    }
-
-                    Button {
                         viewModel.shuttleBackward()
                     } label: {
                         Label("倒放", systemImage: "backward.fill")
@@ -377,12 +371,6 @@ struct ContentView: View {
                     }
                     .keyboardShortcut("l", modifiers: [])
                     .help("L")
-
-                    Button {
-                        viewModel.seekToEnd()
-                    } label: {
-                        Label("结尾", systemImage: "forward.end")
-                    }
 
                     Button {
                         viewModel.playOrPause()
