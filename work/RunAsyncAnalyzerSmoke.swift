@@ -22,6 +22,7 @@ struct RunAsyncAnalyzerSmoke {
         try verifyAdjacentTimecodeSequences()
         try verifyConfidenceCalibration()
         try verifySampleOrdering()
+        try verifyFrameRateEvidence()
 
         let projectRoot = URL(fileURLWithPath: FileManager.default.currentDirectoryPath, isDirectory: true)
         let samplesDirectory = projectRoot
@@ -147,6 +148,10 @@ struct RunAsyncAnalyzerSmoke {
             for: .timecode,
             candidates: [OCRTextCandidate(text: "14:10:10:10 15:10:10:10", confidence: 1)]
         )
+        let correctedTimecode = OCRCandidateRanker.bestCandidate(
+            for: .timecode,
+            candidates: [OCRTextCandidate(text: "A I4:10:10:10", confidence: 1)]
+        )
 
         let failures = [
             OCRFieldParser.clipName(from: fileName.text) == "A006C001"
@@ -163,7 +168,18 @@ struct RunAsyncAnalyzerSmoke {
                 : "original OCR text must remain available for review",
             ambiguousTimecode.formatScore < 1
                 ? nil
-                : "two distinct timecodes in one candidate must not be treated as unambiguous"
+                : "two distinct timecodes in one candidate must not be treated as unambiguous",
+            correctedTimecode.text == "14:10:10:10"
+                && OCRCandidateRanker.positionCorrectionCount(kind: .timecode, text: correctedTimecode.rawText) == 1
+                && OCRPreprocessingResolver.shouldUseFallback(correctedTimecode, kind: .timecode)
+                ? nil
+                : "normalization must retain character-correction evidence",
+            OCRFieldParser.timecode(from: "14:10:10:10 15:10:10:10", fps: 25) == nil
+                ? nil : "the field parser must reject conflicting timecodes",
+            OCRFieldParser.timecode(from: "114:10:10:10", fps: 25) == nil
+                ? nil : "the field parser must not extract a partial numeric token",
+            OCRFieldParser.timecode(from: "14:10:10:10:12", fps: 25) == nil
+                ? nil : "the field parser must reject extra timecode components"
         ].compactMap { $0 }
 
         if !failures.isEmpty {
@@ -483,6 +499,50 @@ struct RunAsyncAnalyzerSmoke {
             throw SmokeError.failedFiles(["samples without PTS must sort by actual seconds"])
         }
         print("Chronological sample ordering cases passed")
+    }
+
+    private static func verifyFrameRateEvidence() throws {
+        let region = OCRRegion(id: "jitter-tc", label: "时间码", kind: .timecode, normalizedRect: .zero)
+        let start = Timecode(hours: 13, minutes: 23, seconds: 19, frames: 15, fps: 25)
+        var samples: [OCRSample] = []
+        for center in [25, 259, 516] {
+            let sequenceID = UUID()
+            for position in [-1, 0, 1] {
+                let frame = center + position
+                let timecode = Timecode.from(
+                    totalFrames: start.totalFrames + frame + (position == 1 ? 1 : 0), fps: 25
+                )
+                samples.append(OCRSample(
+                    region: region, requestedSeconds: Double(frame) / 25,
+                    actualSeconds: Double(frame) / 25, rawText: timecode.description,
+                    confidence: 1, formatScore: 1, candidateMargin: 1, preprocessingAgreement: 1,
+                    actualTimeValue: Int64(frame), actualTimeTimescale: 25,
+                    timecodeSequenceID: sequenceID, timecodeSequencePosition: position
+                ))
+            }
+        }
+        let result = OCRConsensusResolver.resolve(
+            videoName: "25fps-monitor-jitter", videoFrameRate: 25,
+            sourceTimecodeFrameRateSetting: .automatic, duration: 22,
+            samples: samples, expectedKinds: [.timecode]
+        )
+        guard result.fps == 25, result.startTimecode == nil,
+              result.confidence < 0.82,
+              result.samples.allSatisfy({ $0.timecodeSampleStatus == .invalid }) else {
+            throw SmokeError.failedFiles([
+                "whole-clip evidence must identify 25fps without accepting discontinuous triples; got \(result.fps)fps"
+            ])
+        }
+        let ambiguous = OCRConsensusResolver.resolve(
+            videoName: "ambiguous-monitor-rate", videoFrameRate: 25,
+            sourceTimecodeFrameRateSetting: .automatic, duration: 2,
+            samples: Array(samples.prefix(3)), expectedKinds: [.timecode]
+        )
+        guard ambiguous.fps == 25, ambiguous.confidence < 0.82,
+              ambiguous.timecodeDiagnostics?.isFrameRateCandidateUnique == false else {
+            throw SmokeError.failedFiles(["a provisional media-rate tie break must not become a confident inference"])
+        }
+        print("Whole-clip frame-rate inference preserves continuity rejection")
     }
 }
 

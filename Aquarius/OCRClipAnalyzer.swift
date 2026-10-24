@@ -1144,7 +1144,7 @@ enum OCRSampleOrdering {
     }
 }
 
-private enum OCRConsensusResolver {
+enum OCRConsensusResolver {
     nonisolated static func resolve(
         videoName: String,
         videoFrameRate: Double,
@@ -1291,6 +1291,7 @@ private enum OCRConsensusResolver {
         let sourceFrameRate: Int
         let playbackFrameRate: Double
         let isDropFrame: Bool
+        let frameRateSupportCount: Int
         let validSampleCount: Int
         let invalidSampleCount: Int
         let clusteredSampleCount: Int
@@ -1314,7 +1315,6 @@ private enum OCRConsensusResolver {
                 setting: setting
             )
         }
-
         guard let best = candidates.max(by: isWorseCandidate) else {
             let diagnostics = TimecodeDiagnostics(
                 setting: setting,
@@ -1332,6 +1332,7 @@ private enum OCRConsensusResolver {
                 sourceFrameRate: setting.fps ?? max(1, Int(round(videoFrameRate))),
                 playbackFrameRate: setting == .automatic ? max(1.0, videoFrameRate.rounded()) : setting.playbackFrameRate,
                 isDropFrame: setting != .automatic && setting.isDropFrame,
+                frameRateSupportCount: 0,
                 validSampleCount: 0,
                 invalidSampleCount: samples.count,
                 clusteredSampleCount: 0,
@@ -1362,6 +1363,7 @@ private enum OCRConsensusResolver {
             sourceFrameRate: best.sourceFrameRate,
             playbackFrameRate: best.playbackFrameRate,
             isDropFrame: best.isDropFrame,
+            frameRateSupportCount: best.frameRateSupportCount,
             validSampleCount: best.validSampleCount,
             invalidSampleCount: best.invalidSampleCount,
             clusteredSampleCount: best.clusteredSampleCount,
@@ -1398,6 +1400,10 @@ private enum OCRConsensusResolver {
             )
             return TimecodeReading(sample: sample, timecode: timecode, startFrame: startFrame)
         }
+        // Infer the rate from agreement across the whole clip before rejecting
+        // discontinuous triples. Otherwise a few surviving triples can make a
+        // 25 fps monitor recording incorrectly look like 24 fps.
+        let frameRateSupportCount = bestFrameCluster(parsedReadings.map(\.startFrame))?.count ?? 0
         let sequenceValidation = TimecodeSequenceValidator.validate(
             samples: samples,
             fps: fps,
@@ -1453,6 +1459,7 @@ private enum OCRConsensusResolver {
             sourceFrameRate: fps,
             playbackFrameRate: playbackFrameRate,
             isDropFrame: isDropFrame,
+            frameRateSupportCount: frameRateSupportCount,
             validSampleCount: readings.count,
             invalidSampleCount: invalidCount,
             clusteredSampleCount: bestFrameCluster?.count ?? 0,
@@ -1463,6 +1470,9 @@ private enum OCRConsensusResolver {
     }
 
     nonisolated private static func isWorseCandidate(_ lhs: TimecodeAnalysis, _ rhs: TimecodeAnalysis) -> Bool {
+        if lhs.frameRateSupportCount != rhs.frameRateSupportCount {
+            return lhs.frameRateSupportCount < rhs.frameRateSupportCount
+        }
         if lhs.clusteredSampleCount != rhs.clusteredSampleCount {
             return lhs.clusteredSampleCount < rhs.clusteredSampleCount
         }
@@ -1488,7 +1498,13 @@ private enum OCRConsensusResolver {
             return lhsDrift > rhsDrift
         }
 
-        // Prefer 24 in exact ties; it is the most common camera TC base for this workflow.
+        // In an exact tie, display the media rate as the provisional choice.
+        // hasEquivalentEvidence still marks that rate as ambiguous.
+        let lhsRateDistance = abs(lhs.playbackFrameRate - lhs.diagnostics.videoFrameRate)
+        let rhsRateDistance = abs(rhs.playbackFrameRate - rhs.diagnostics.videoFrameRate)
+        if abs(lhsRateDistance - rhsRateDistance) > 0.001 {
+            return lhsRateDistance > rhsRateDistance
+        }
         return lhs.sourceFrameRate > rhs.sourceFrameRate
     }
 
@@ -1496,7 +1512,8 @@ private enum OCRConsensusResolver {
         _ lhs: TimecodeAnalysis,
         _ rhs: TimecodeAnalysis
     ) -> Bool {
-        lhs.clusteredSampleCount == rhs.clusteredSampleCount
+        lhs.frameRateSupportCount == rhs.frameRateSupportCount
+            && lhs.clusteredSampleCount == rhs.clusteredSampleCount
             && lhs.validSampleCount == rhs.validSampleCount
             && consistencyRank(lhs.diagnostics.status) == consistencyRank(rhs.diagnostics.status)
             && lhs.diagnostics.maxDeviationFrames == rhs.diagnostics.maxDeviationFrames
