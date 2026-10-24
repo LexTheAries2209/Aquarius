@@ -1592,6 +1592,7 @@ private struct ROIEditorOverlay: View {
                     }
                 }
             }
+            .frame(width: proxy.size.width, height: proxy.size.height, alignment: .topLeading)
             .contentShape(Rectangle())
             .gesture(
                 DragGesture(minimumDistance: 2, coordinateSpace: .local)

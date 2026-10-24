@@ -4,6 +4,12 @@
 
 - Timecode crops respect the selected ROI. Other fields retain their existing
   capture margin.
+- The editable canvas extends 1% beyond each video edge: normalized bounds are
+  `[-0.01, 1.01]` on both axes. Drag hit testing, overlay placement, and ROI preset
+  round-trips use the same bounds. The video alone is clipped.
+- Selected pixels outside the video are filled with opaque black for OCR.
+  In-frame pixels retain their position and orientation; this does not expand a
+  timecode ROI into neighboring in-frame labels.
 - A recognized line such as `A 14:10:10:10` produces `14:10:10:10`. Original
   OCR remains available in the sample text tooltip.
 - The strict timecode parser validates the whole string, including field widths,
@@ -26,7 +32,8 @@ Run the built-in regression suite:
 ./script/test_ocr_regression.sh
 ```
 
-It covers malformed SMPTE inputs, crop bounds, labeled and ambiguous candidates,
+It covers malformed SMPTE inputs, crop bounds and four-edge pixel alignment,
+overscan gesture mapping and preset round-trips, labeled and ambiguous candidates,
 character correction, fallback preprocessing, rational adjacent-frame sequences
 at 23.976/24/25/29.97 NDF/DF/30, confidence gates, exact PTS ordering, retry batches,
 duplicates, missing PTS, and rate inference with discontinuous monitor overlays.
@@ -39,15 +46,16 @@ Run the external field regression:
 ```
 
 The external set contains 15 MOV clips, five takes across three cameras. The
-runner checks both a tight timecode ROI and one including the preceding label:
-30 analyses and 630 sampled timecode readings. First-frame ground truth is
+runner checks a tight timecode ROI, one including the preceding label, and one
+extending 1% below the video:
+45 analyses and 945 sampled timecode readings. First-frame ground truth is
 transcribed from the actual encoded frames, independently of MOV metadata.
 Source footage and generated images are not committed.
 
 The field test checks first-frame recognition against that ground truth, strict
 format validity of every normalized reading, chronological ordering, the
 provisional 25fps rate, and the confidence gate for rejected temporal sequences.
-All 30 analyses pass these checks, covering 630 valid SMPTE readings.
+All 45 analyses pass these checks, covering 945 valid SMPTE readings.
 Passing it does **not** mean a
 clip's inferred start TC or source rate is safe for automatic export.
 
@@ -68,7 +76,7 @@ eight consecutive frames around 8.32 seconds in take 1, camera A show:
 ```
 
 These are visible pixels in the source, not OCR substitutions. Strict adjacent
-sequence validation therefore continues to reject some readings, and all 30
+sequence validation therefore continues to reject some readings, and all 45
 field analyses remain below the trusted confidence threshold. Some clips have no
 validated start TC; others can differ from the first visible label by a frame.
 This change does not bypass those checks or guarantee a constant start-TC offset

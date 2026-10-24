@@ -41,7 +41,7 @@ V1.1.1 的中文发布说明见 [docs/releases/v1.1.1.zh-CN.md](docs/releases/v1
 - 对单个素材提取，或对当前列表批量提取。
 - 多点抽样识别并做一致性判断，输出可信、需复核或失败状态。
 - OCR 会读取 Vision 的多个候选，并按文件名、卷号和时间码各自的格式规则排序。
-- 时间码严格按选区裁剪，规范化后只显示时间码；悬停可查看原始 OCR。样本按实际视频帧顺序排列，并显示 `F` 帧号。
+- 时间码严格按选区裁剪；可框选范围允许超出视频四周各 1%，越界部分补黑边，预设会保留越界坐标。规范化后只显示时间码；悬停可查看原始 OCR。样本按实际视频帧顺序排列，并显示 `F` 帧号。
 - 支持 `A006C001` 这类 `LDDDLDDD` 紧凑摄影机文件名，并按字符位置处理常见字母/数字混淆；发生纠错的结果会降级为“需复核”。
 - 对 OCR 区域使用放大、灰度、对比度、锐化、反色和阈值二值化等自适应预处理，并融合多个版本的识别结果。
 - 时间码使用相邻帧连续性和实际有理帧率校验，覆盖 23.976、24、25、29.97 NDF/DF 和 30 fps。
@@ -196,7 +196,7 @@ Common use cases:
 - Analyze one clip or the whole queue.
 - Sample multiple frames and resolve stable metadata from repeated OCR readings.
 - Read multiple Apple Vision candidates and rank them with field-specific clip-name, reel, and timecode rules.
-- Crop timecode strictly to its ROI and display the normalized value, with raw OCR available on hover. Sort samples by actual video frame time and show their `F` frame indices.
+- Crop timecode strictly to its ROI, allowing selection 1% beyond each video edge with black padding and preserved preset coordinates. Display the normalized value, with raw OCR available on hover. Sort samples by actual video frame time and show their `F` frame indices.
 - Support compact `LDDDLDDD` camera clip names such as `A006C001`, with position-constrained letter/digit correction and mandatory review for corrected results.
 - Apply adaptive ROI scaling, grayscale, contrast, sharpening, inversion, and threshold variants, then fuse their OCR evidence.
 - Validate timecode against adjacent frames and rational frame rates across 23.976, 24, 25, 29.97 NDF/DF, and 30 fps.

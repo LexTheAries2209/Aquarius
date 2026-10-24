@@ -27,7 +27,8 @@ struct RunFieldSampleSmoke {
             .sorted { $0.lastPathComponent < $1.lastPathComponent }
         let layouts: [(String, CGRect)] = [
             ("tight", CGRect(x: 0.840, y: 0.960, width: 0.115, height: 0.039)),
-            ("with-label", CGRect(x: 0.795, y: 0.960, width: 0.160, height: 0.039))
+            ("with-label", CGRect(x: 0.795, y: 0.960, width: 0.160, height: 0.039)),
+            ("bottom-overscan", CGRect(x: 0.840, y: 0.960, width: 0.115, height: 0.050))
         ]
         var failures: [String] = []
         var count = 0
@@ -81,7 +82,7 @@ struct RunFieldSampleSmoke {
             }
         }
         guard count == expected.count * layouts.count else {
-            print("FAIL: expected 30 analyses, ran \(count)")
+            print("FAIL: expected \(expected.count * layouts.count) analyses, ran \(count)")
             exit(1)
         }
         for failure in failures { print("FAIL: \(failure)") }

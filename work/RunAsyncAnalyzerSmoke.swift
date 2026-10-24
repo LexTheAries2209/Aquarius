@@ -228,6 +228,9 @@ struct RunAsyncAnalyzerSmoke {
         let zero = OCRSelectionGeometry.normalizedRect(
             from: .zero, to: .zero, in: .zero
         )
+        let corner = OCRSelectionGeometry.normalizedRect(
+            from: CGPoint(x: 1020, y: 1020), to: CGPoint(x: 1020, y: 1020), in: canvas
+        )
         let fullOverlay = OCRSelectionGeometry.overlayRect(for: full, in: canvas)
         let videoOverlay = OCRSelectionGeometry.overlayRect(
             for: CGRect(x: 0, y: 0, width: 1, height: 1), in: canvas
@@ -237,6 +240,7 @@ struct RunAsyncAnalyzerSmoke {
               rectMatches(bottom, CGRect(x: 0.8, y: 0.96, width: 0.15, height: 0.05)),
               rectMatches(fullOverlay, CGRect(origin: .zero, size: canvas)),
               rectMatches(videoOverlay, CGRect(x: 10, y: 10, width: 1000, height: 1000)),
+              rectMatches(corner, CGRect(x: 0.998, y: 0.998, width: 0.012, height: 0.012)),
               zero == .zero else {
             throw SmokeError.failedFiles(["ROI gestures and overlays must share the full-video 1% overscan bounds"])
         }
