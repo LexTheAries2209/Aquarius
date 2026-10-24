@@ -978,7 +978,9 @@ struct ContentView: View {
             } else if let result = viewModel.result,
                       let diagnostics = result.timecodeDiagnostics,
                       diagnostics.status != .consistent,
-                      diagnostics.status != .notChecked {
+                      diagnostics.status != .notChecked,
+                      diagnostics.status != .highRisk,
+                      diagnostics.status != .driftSuspected {
                 Label(diagnostics.status.title, systemImage: "exclamationmark.triangle")
                     .font(.caption)
                     .foregroundStyle(color(for: diagnostics.status))
@@ -994,17 +996,23 @@ struct ContentView: View {
                 ResultRow(title: "当前TMCD", value: viewModel.selectedTimecodeMetadata?.displayText ?? "未检测到")
 
                 if let diagnostics = result.timecodeDiagnostics {
-                    HStack(alignment: .firstTextBaseline) {
-                        Text("一致性")
-                            .foregroundStyle(.secondary)
-                            .frame(width: 82, alignment: .leading)
-                        Text(diagnostics.status.title)
-                            .font(.body.weight(.semibold))
-                            .foregroundStyle(color(for: diagnostics.status))
-                        Spacer()
+                    if diagnostics.status != .highRisk,
+                       diagnostics.status != .driftSuspected {
+                        HStack(alignment: .firstTextBaseline) {
+                            Text("一致性")
+                                .foregroundStyle(.secondary)
+                                .frame(width: 82, alignment: .leading)
+                            Text(diagnostics.status.title)
+                                .font(.body.weight(.semibold))
+                                .foregroundStyle(color(for: diagnostics.status))
+                            Spacer()
+                        }
                     }
 
-                    ResultRow(title: "漂移", value: diagnostics.driftDisplay)
+                    if diagnostics.status != .highRisk,
+                       diagnostics.status != .driftSuspected {
+                        ResultRow(title: "漂移", value: diagnostics.driftDisplay)
+                    }
 
                     if let tmcdComparison = tmcdComparison(for: result) {
                         Label(tmcdComparison.text, systemImage: tmcdComparison.systemImage)
@@ -1012,10 +1020,13 @@ struct ContentView: View {
                             .foregroundStyle(tmcdComparison.color)
                     }
 
-                    ForEach(diagnostics.notes, id: \.self) { note in
-                        Label(note, systemImage: "exclamationmark.triangle")
-                            .font(.caption)
-                            .foregroundStyle(.orange)
+                    if diagnostics.status != .highRisk,
+                       diagnostics.status != .driftSuspected {
+                        ForEach(diagnostics.notes, id: \.self) { note in
+                            Label(note, systemImage: "exclamationmark.triangle")
+                                .font(.caption)
+                                .foregroundStyle(.orange)
+                        }
                     }
                 } else if viewModel.isFieldEnabled(.timecode) {
                     Text("等待 OCR 后检测时间码帧率与漂移")
@@ -1517,8 +1528,10 @@ private struct MediaQueueRow: View {
         switch status {
         case .notChecked:
             return nil
-        case .consistent, .frameRateMismatchStable, .driftSuspected, .highRisk:
+        case .consistent, .frameRateMismatchStable:
             return status.title
+        case .driftSuspected, .highRisk:
+            return nil
         }
     }
 

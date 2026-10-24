@@ -22,6 +22,7 @@ struct RunAsyncAnalyzerSmoke {
         try verifyAdaptivePreprocessing()
         try verifyAdjacentTimecodeSequences()
         try verifyConfidenceCalibration()
+        try verifyRecognizedTimecodeOverridesRiskStatus()
         try verifySampleOrdering()
         try verifyFrameRateEvidence()
 
@@ -550,6 +551,53 @@ struct RunAsyncAnalyzerSmoke {
             throw SmokeError.failedFiles(failures)
         }
         print("OCR confidence calibration cases passed")
+    }
+
+    private static func verifyRecognizedTimecodeOverridesRiskStatus() throws {
+        let startTimecode = Timecode(hours: 14, minutes: 10, seconds: 10, frames: 10, fps: 25)
+        for status in [TimecodeConsistencyStatus.highRisk, .driftSuspected] {
+            let diagnostics = TimecodeDiagnostics(
+                setting: .automatic,
+                videoFrameRate: 25,
+                sourceTimecodeFrameRate: 25,
+                validSampleCount: 1,
+                invalidSampleCount: 0,
+                maxDeviationFrames: nil,
+                driftFramesPerMinute: nil,
+                isFrameRateCandidateUnique: false,
+                status: status,
+                notes: ["diagnostic-only risk"]
+            )
+            let result = ClipOCRResult(
+                videoName: "risk-status",
+                fps: 25,
+                videoFrameRate: 25,
+                sourceTimecodeFrameRateSetting: .automatic,
+                duration: 1,
+                clipName: nil,
+                roll: nil,
+                startTimecode: startTimecode,
+                confidence: 0.40,
+                samples: [],
+                timecodeDiagnostics: diagnostics,
+                notes: []
+            )
+            let failures = [
+                result.statusTitle == "可信"
+                    ? nil
+                    : "a parsed start TC must be reported as successful",
+                MediaAnalysisStatus.status(for: result) == .trusted
+                    ? nil
+                    : "a parsed start TC must mark the media item trusted",
+                ClipExportMetadata(result: result).startTimecode == startTimecode
+                    ? nil
+                    : "a parsed start TC must remain exportable for burning"
+            ].compactMap { $0 }
+            if !failures.isEmpty {
+                throw SmokeError.failedFiles(failures)
+            }
+        }
+        print("Recognized timecode overrides diagnostic risk status")
     }
 
     private static func verifySampleOrdering() throws {

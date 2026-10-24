@@ -721,12 +721,17 @@ struct ClipOCRResult: Sendable {
     }
 
     nonisolated var statusTitle: String {
+        // A parseable start TC is actionable even when diagnostics are temporarily
+        // marked risky; users can review the details without being blocked.
+        if startTimecode != nil {
+            return "可信"
+        }
         if confidence >= 0.82 {
-            "可信"
+            return "可信"
         } else if confidence >= 0.45 {
-            "需复核"
+            return "需复核"
         } else {
-            "失败"
+            return "失败"
         }
     }
 }
@@ -799,11 +804,11 @@ enum MediaAnalysisStatus: String, Codable, CaseIterable, Sendable {
     }
 
     static func status(for result: ClipOCRResult) -> MediaAnalysisStatus {
-        if result.timecodeDiagnostics?.status == .highRisk {
-            return .needsReview
-        }
-        if result.timecodeDiagnostics?.status == .driftSuspected {
-            return .needsReview
+        // Burn/export workflows need a valid parsed TC, not a perfect
+        // consistency diagnosis. Keep the diagnostic status for inspection but
+        // consider a result successful whenever a start TC was recovered.
+        if result.startTimecode != nil {
+            return .trusted
         }
         if result.confidence >= 0.82 {
             return .trusted

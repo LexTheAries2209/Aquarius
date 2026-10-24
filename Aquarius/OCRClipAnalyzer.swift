@@ -1249,15 +1249,12 @@ enum OCRConsensusResolver {
         let candidateMargin = average(samples.map(\.candidateMargin))
         let preprocessingAgreement = average(samples.map(\.preprocessingAgreement))
         let usesCharacterCorrection = samples.contains { $0.characterCorrectionCount > 0 }
-        let hasHighRiskTimecode = timecodeAnalysis?.diagnostics.status == .highRisk
-            || timecodeAnalysis?.diagnostics.status == .driftSuspected
         let hasAllExpectedValues = (!expectsClipName || clipName != nil)
             && (!expectsRoll || roll != nil)
             && (!expectsTimecode || startTimecode != nil)
         let isLegal = hasAllExpectedValues
             && invalidRollSampleCount == 0
             && invalidTimecodeSampleCount == 0
-            && !hasHighRiskTimecode
         let isTimecodeFrameRateUnique = !expectsTimecode
             || (timecodeAnalysis?.diagnostics.isFrameRateCandidateUnique == true)
         let assessment = OCRConfidenceCalibrator.assess(
