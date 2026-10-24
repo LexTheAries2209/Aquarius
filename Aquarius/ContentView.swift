@@ -20,24 +20,25 @@ struct ContentView: View {
                     .frame(minWidth: 270, idealWidth: 310, maxWidth: 380)
 
                 HSplitView {
-                    videoWorkspace
+                    videoColumn
                         .frame(minWidth: 620)
 
                     inspector
+                        .safeAreaInset(edge: .bottom, spacing: 0) {
+                            HStack {
+                                Spacer()
+                                projectSettingsLauncher
+                            }
+                            .padding(.top, 8)
+                            .background(Color(nsColor: .controlBackgroundColor))
+                        }
                         .frame(minWidth: 340, idealWidth: 380, maxWidth: 460)
                 }
             }
-
-            Divider()
-            sampleLog
-                .frame(height: 180)
         }
         .frame(minWidth: 1360, minHeight: 920)
         .overlay(alignment: .topLeading) {
             mediaNavigationShortcuts
-        }
-        .overlay(alignment: .bottomTrailing) {
-            projectSettingsLauncher
         }
         .background {
             FrameStepKeyHandler(
@@ -313,6 +314,19 @@ struct ContentView: View {
             return true
         } isTargeted: { isTargeted in
             isDropTargeted = isTargeted
+        }
+    }
+
+    private var videoColumn: some View {
+        GeometryReader { proxy in
+            // Raise the transport by 20% of the former preview/transport height.
+            let sampleLogHeight = 180 + max(0, proxy.size.height - 180) * 0.2
+            VStack(spacing: 0) {
+                videoWorkspace
+                Divider()
+                sampleLog
+                    .frame(height: sampleLogHeight)
+            }
         }
     }
 
@@ -1002,7 +1016,7 @@ struct ContentView: View {
                 }
                 .padding(.top, 28)
             }
-            .padding(.trailing, 44)
+            .padding(.trailing, 4)
 
             HStack {
                 Text("OCR 样本")
