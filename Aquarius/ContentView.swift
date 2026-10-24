@@ -14,23 +14,28 @@ private func aquariusDisplayName() -> String {
 struct ContentView: View {
     @ObservedObject var viewModel: AnalysisViewModel
     @State private var isDropTargeted = false
+    @State private var samplePanelDragStartHeight: CGFloat?
+    @State private var isSamplePanelCursorPushed = false
+    @SceneStorage("aquarius.ocrSamplePanelHeight") private var savedSamplePanelHeight = 300.0
     @Environment(\.openSettings) private var openSettings
 
     var body: some View {
-        VStack(spacing: 0) {
-            topBar
-            Divider()
-
-            HSplitView {
-                mediaSidebar
-                    .frame(minWidth: 270, idealWidth: 310, maxWidth: 380)
+        GeometryReader { windowGeometry in
+            VStack(spacing: 0) {
+                topBar
+                Divider()
 
                 HSplitView {
-                    videoColumn
-                        .frame(minWidth: 620)
+                    mediaSidebar
+                        .frame(minWidth: 270, idealWidth: 310, maxWidth: 380)
 
-                    inspector
-                        .frame(minWidth: 340, idealWidth: 380, maxWidth: 460)
+                    HSplitView {
+                        videoColumn(windowContentHeight: windowGeometry.size.height)
+                            .frame(minWidth: 620)
+
+                        inspector
+                            .frame(minWidth: 340, idealWidth: 380, maxWidth: 460)
+                    }
                 }
             }
         }
@@ -350,17 +355,91 @@ struct ContentView: View {
         openSettings()
     }
 
-    private var videoColumn: some View {
+    private func videoColumn(windowContentHeight: CGFloat) -> some View {
         GeometryReader { proxy in
-            // Raise the transport by 20% of the former preview/transport height.
-            let sampleLogHeight = 180 + max(0, proxy.size.height - 180) * 0.2
+            let maximumSampleHeight = OCRSamplePanelSizing.maximumHeight(
+                windowContentHeight: windowContentHeight,
+                columnHeight: proxy.size.height
+            )
+            let sampleLogHeight = OCRSamplePanelSizing.clampedHeight(
+                CGFloat(savedSamplePanelHeight),
+                maximumHeight: maximumSampleHeight
+            )
+
             VStack(spacing: 0) {
                 videoWorkspace
+                    .frame(
+                        minHeight: OCRSamplePanelSizing.minimumVideoWorkspaceHeight,
+                        maxHeight: .infinity
+                    )
                 Divider()
+                samplePanelDivider(
+                    height: sampleLogHeight,
+                    maximumHeight: maximumSampleHeight
+                )
                 sampleLog
                     .frame(height: sampleLogHeight)
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .onDisappear {
+                samplePanelDragStartHeight = nil
+                if isSamplePanelCursorPushed {
+                    NSCursor.pop()
+                    isSamplePanelCursorPushed = false
+                }
+            }
         }
+    }
+
+    private func samplePanelDivider(height: CGFloat, maximumHeight: CGFloat) -> some View {
+        VStack(spacing: 0) {
+            Rectangle()
+                .fill(Color(nsColor: .separatorColor))
+                .frame(height: 1)
+            Capsule()
+                .fill(Color.secondary.opacity(0.65))
+                .frame(width: 36, height: 3)
+                .padding(.vertical, 3)
+        }
+        .frame(maxWidth: .infinity)
+        .frame(height: OCRSamplePanelSizing.dividerHeight)
+        .contentShape(Rectangle())
+        .onHover { isHovering in
+            if isHovering, !isSamplePanelCursorPushed {
+                NSCursor.resizeUpDown.push()
+                isSamplePanelCursorPushed = true
+            } else if !isHovering, isSamplePanelCursorPushed {
+                NSCursor.pop()
+                isSamplePanelCursorPushed = false
+            }
+        }
+        .gesture(
+            DragGesture(minimumDistance: 2)
+                .onChanged { value in
+                    let startingHeight = samplePanelDragStartHeight ?? height
+                    samplePanelDragStartHeight = startingHeight
+                    savedSamplePanelHeight = Double(
+                        OCRSamplePanelSizing.clampedHeight(
+                            startingHeight - value.translation.height,
+                            maximumHeight: maximumHeight
+                        )
+                    )
+                }
+                .onEnded { _ in
+                    samplePanelDragStartHeight = nil
+                }
+        )
+        .accessibilityElement()
+        .accessibilityLabel("调整 OCR 样本区域高度")
+        .accessibilityValue("\(Int(height.rounded())) 点")
+        .accessibilityAddTraits(.isButton)
+        .accessibilityAdjustableAction { direction in
+            let change: CGFloat = direction == .increment ? 24 : -24
+            savedSamplePanelHeight = Double(
+                OCRSamplePanelSizing.clampedHeight(height + change, maximumHeight: maximumHeight)
+            )
+        }
+        .help("拖动调整 OCR 样本区域高度，最多为窗口高度的一半")
     }
 
     private var videoWorkspace: some View {

@@ -37,8 +37,41 @@ struct RunProjectSettingsSmoke {
                   "a new session must start with an empty media queue and no player")
         try check(model.enabledFieldKinds == Set(OCRFieldKind.allCases), "a fresh session must enable all OCR fields")
         print("Project settings passed: empty startup, default visibility, legacy settings and visibility persistence")
+        try verifySamplePanelSizing()
         try verifyStartupFields(in: testRoot, legacySettings: legacy)
         try verifyKeyboardRouting()
+    }
+
+    private static func verifySamplePanelSizing() throws {
+        for (windowHeight, columnHeight) in [
+            (920.0, 856.0),
+            (680.0, 616.0),
+            (1_400.0, 1_336.0)
+        ] {
+            let maximum = OCRSamplePanelSizing.maximumHeight(
+                windowContentHeight: windowHeight,
+                columnHeight: columnHeight
+            )
+            try check(maximum <= windowHeight * 0.5,
+                      "the sample panel must never exceed half the window height")
+            try check(columnHeight - maximum - OCRSamplePanelSizing.dividerHeight
+                      >= OCRSamplePanelSizing.minimumVideoWorkspaceHeight,
+                      "resizing must retain minimum playback workspace height")
+            try check(OCRSamplePanelSizing.clampedHeight(-100, maximumHeight: maximum)
+                      == OCRSamplePanelSizing.minimumHeight,
+                      "dragging below the minimum must keep samples readable")
+            try check(OCRSamplePanelSizing.clampedHeight(10_000, maximumHeight: maximum)
+                      == maximum,
+                      "dragging above the limit must clamp at the available maximum")
+            try check(OCRSamplePanelSizing.clampedHeight(250, maximumHeight: maximum) == 250,
+                      "in-range sample panel heights must be retained")
+        }
+        let narrowWindowMaximum = OCRSamplePanelSizing.maximumHeight(windowContentHeight: 500, columnHeight: 300)
+        try check(narrowWindowMaximum == 50,
+                  "a narrow video column must further constrain the window half-height limit")
+        try check(OCRSamplePanelSizing.clampedHeight(300, maximumHeight: narrowWindowMaximum) == 50,
+                  "window resizing must visually clamp a saved height to the current available space")
+        print("OCR sample panel sizing passed: window half-height cap, playback minimum, drag bounds and resize clamp")
     }
 
     @MainActor

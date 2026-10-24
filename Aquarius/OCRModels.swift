@@ -97,6 +97,27 @@ enum OCRSelectionGeometry {
     }
 }
 
+enum OCRSamplePanelSizing {
+    nonisolated static let minimumHeight: CGFloat = 160
+    nonisolated static let minimumVideoWorkspaceHeight: CGFloat = 240
+    nonisolated static let dividerHeight: CGFloat = 10
+
+    nonisolated static func maximumHeight(windowContentHeight: CGFloat, columnHeight: CGFloat) -> CGFloat {
+        max(
+            0,
+            min(
+                windowContentHeight * 0.5,
+                columnHeight - minimumVideoWorkspaceHeight - dividerHeight
+            )
+        )
+    }
+
+    nonisolated static func clampedHeight(_ proposedHeight: CGFloat, maximumHeight: CGFloat) -> CGFloat {
+        guard maximumHeight > 0 else { return 0 }
+        return min(max(proposedHeight, min(minimumHeight, maximumHeight)), maximumHeight)
+    }
+}
+
 struct SampleVideo: Identifiable {
     let fileName: String
     let displayName: String
