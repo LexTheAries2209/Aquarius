@@ -21,6 +21,7 @@ struct RunAsyncAnalyzerSmoke {
         try verifyAdaptivePreprocessing()
         try verifyAdjacentTimecodeSequences()
         try verifyConfidenceCalibration()
+        try verifySampleOrdering()
 
         let projectRoot = URL(fileURLWithPath: FileManager.default.currentDirectoryPath, isDirectory: true)
         let samplesDirectory = projectRoot
@@ -87,6 +88,8 @@ struct RunAsyncAnalyzerSmoke {
                 result.clipName == testCase.expectedClipName ? nil : "clip expected \(testCase.expectedClipName), got \(clipNameText)",
                 result.roll == testCase.expectedRoll ? nil : "roll expected \(testCase.expectedRoll), got \(rollText)",
                 timecodeText == testCase.expectedStartTimecode ? nil : "TC expected \(testCase.expectedStartTimecode), got \(timecodeText)",
+                zip(result.samples, result.samples.dropFirst()).allSatisfy { $0.actualSeconds <= $1.actualSeconds }
+                    ? nil : "OCR results are not in video frame order",
                 result.confidence >= 0.82 ? nil : "confidence expected trusted, got \(String(format: "%.2f", result.confidence))"
             ].compactMap { $0 }
 
@@ -444,6 +447,42 @@ struct RunAsyncAnalyzerSmoke {
             throw SmokeError.failedFiles(failures)
         }
         print("OCR confidence calibration cases passed")
+    }
+
+    private static func verifySampleOrdering() throws {
+        func sample(_ kind: OCRFieldKind, _ frame: Int64, requested: Double = 50) -> OCRSample {
+            OCRSample(
+                region: OCRRegion(id: kind.rawValue, label: kind.title, kind: kind, normalizedRect: .zero),
+                requestedSeconds: requested,
+                // Deliberately round these values: ordering must use actual PTS.
+                actualSeconds: Double(frame / 25),
+                rawText: kind.rawValue, confidence: 1,
+                actualTimeValue: frame * 3600, actualTimeTimescale: 90_000
+            )
+        }
+        let current = sample(.timecode, 25)
+        let previous = sample(.timecode, 24)
+        let next = sample(.timecode, 26)
+        let earlyRetry = sample(.timecode, 10, requested: 100)
+        let clip = sample(.clipName, 25)
+        let roll = sample(.roll, 25)
+        let duplicate = sample(.timecode, 25)
+        let input = [current, previous, next, earlyRetry, roll, clip, duplicate]
+        let expected = [earlyRetry, previous, clip, roll, current, duplicate, next]
+        let sorted = OCRSampleOrdering.sorted(input)
+        guard sorted.map(\.id) == expected.map(\.id),
+              OCRSampleOrdering.sorted(sorted).map(\.id) == sorted.map(\.id) else {
+            throw SmokeError.failedFiles(["samples must sort by actual PTS, then field, with stable duplicate order"])
+        }
+        let fallback = OCRSample(
+            region: current.region, requestedSeconds: 200, actualSeconds: 0.5,
+            rawText: "fallback", confidence: 1
+        )
+        guard OCRSampleOrdering.sorted([current, fallback, previous]).map(\.id)
+            == [fallback, previous, current].map(\.id) else {
+            throw SmokeError.failedFiles(["samples without PTS must sort by actual seconds"])
+        }
+        print("Chronological sample ordering cases passed")
     }
 }
 

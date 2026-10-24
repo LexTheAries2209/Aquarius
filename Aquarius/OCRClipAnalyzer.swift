@@ -1110,6 +1110,40 @@ enum OCRConfidenceCalibrator {
     }
 }
 
+enum OCRSampleOrdering {
+    nonisolated static func sorted(_ samples: [OCRSample]) -> [OCRSample] {
+        samples.enumerated().sorted { lhs, rhs in
+            let comparison = CMTimeCompare(actualTime(for: lhs.element), actualTime(for: rhs.element))
+            if comparison != 0 {
+                return comparison < 0
+            }
+            if lhs.element.region.kind != rhs.element.region.kind {
+                return fieldOrder(lhs.element.region.kind) < fieldOrder(rhs.element.region.kind)
+            }
+            // Retain collection order for repeated readings of the same field
+            // and frame; UUIDs and requested seek times do not define video order.
+            return lhs.offset < rhs.offset
+        }.map(\.element)
+    }
+
+    nonisolated private static func actualTime(for sample: OCRSample) -> CMTime {
+        if let value = sample.actualTimeValue,
+           let timescale = sample.actualTimeTimescale,
+           timescale > 0 {
+            return CMTime(value: value, timescale: timescale)
+        }
+        return CMTime(seconds: sample.actualSeconds, preferredTimescale: 1_000_000_000)
+    }
+
+    nonisolated private static func fieldOrder(_ kind: OCRFieldKind) -> Int {
+        switch kind {
+        case .clipName: 0
+        case .roll: 1
+        case .timecode: 2
+        }
+    }
+}
+
 private enum OCRConsensusResolver {
     nonisolated static func resolve(
         videoName: String,
@@ -1241,7 +1275,7 @@ private enum OCRConsensusResolver {
             roll: roll,
             startTimecode: startTimecode,
             confidence: assessment.confidence,
-            samples: timecodeAnalysis?.annotatedSamples ?? samples,
+            samples: OCRSampleOrdering.sorted(timecodeAnalysis?.annotatedSamples ?? samples),
             timecodeDiagnostics: timecodeAnalysis?.diagnostics,
             notes: notes
         )

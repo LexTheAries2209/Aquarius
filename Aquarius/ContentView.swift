@@ -969,8 +969,8 @@ struct ContentView: View {
         ZStack(alignment: .topLeading) {
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 6) {
-                    if let samples = viewModel.result?.samples, !samples.isEmpty {
-                        ForEach(samples) { sample in
+                    if let result = viewModel.result, !result.samples.isEmpty {
+                        ForEach(result.samples) { sample in
                             HStack(alignment: .top, spacing: 10) {
                                 Text(sample.region.kind.title)
                                     .font(.caption.monospaced())
@@ -980,6 +980,10 @@ struct ContentView: View {
                                     .font(.caption.monospaced())
                                     .foregroundStyle(.secondary)
                                     .frame(width: 56, alignment: .trailing)
+                                Text("F\(Int((sample.actualSeconds * result.videoFrameRate).rounded()))")
+                                    .font(.caption.monospaced())
+                                    .foregroundStyle(.secondary)
+                                    .frame(width: 70, alignment: .trailing)
                                 Text("\(Int(sample.confidence * 100))%")
                                     .font(.caption.monospaced())
                                     .foregroundStyle(.secondary)
