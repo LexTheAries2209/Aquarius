@@ -16,6 +16,7 @@ struct RunAsyncAnalyzerSmoke {
     static func main() async throws {
         try verifyParserRegressions()
         try verifyStrictTimecodeParsing()
+        try verifySelectionOverscan()
         try verifyTimecodeCropBoundary()
         try verifyCandidateRanking()
         try verifyAdaptivePreprocessing()
@@ -210,12 +211,59 @@ struct RunAsyncAnalyzerSmoke {
         print("Strict SMPTE timecode parsing cases passed")
     }
 
+    private static func verifySelectionOverscan() throws {
+        let canvas = CGSize(width: 1020, height: 1020)
+        let full = OCRSelectionGeometry.normalizedRect(
+            from: .zero, to: CGPoint(x: 1020, y: 1020), in: canvas
+        )
+        let reverse = OCRSelectionGeometry.normalizedRect(
+            from: CGPoint(x: 1020, y: 1020), to: .zero, in: canvas
+        )
+        let beyond = OCRSelectionGeometry.normalizedRect(
+            from: CGPoint(x: -100, y: -100), to: CGPoint(x: 1200, y: 1200), in: canvas
+        )
+        let bottom = OCRSelectionGeometry.normalizedRect(
+            from: CGPoint(x: 810, y: 970), to: CGPoint(x: 960, y: 1020), in: canvas
+        )
+        let zero = OCRSelectionGeometry.normalizedRect(
+            from: .zero, to: .zero, in: .zero
+        )
+        let fullOverlay = OCRSelectionGeometry.overlayRect(for: full, in: canvas)
+        let videoOverlay = OCRSelectionGeometry.overlayRect(
+            for: CGRect(x: 0, y: 0, width: 1, height: 1), in: canvas
+        )
+        guard rectMatches(full, CGRect(x: -0.01, y: -0.01, width: 1.02, height: 1.02)),
+              rectMatches(reverse, full), rectMatches(beyond, full),
+              rectMatches(bottom, CGRect(x: 0.8, y: 0.96, width: 0.15, height: 0.05)),
+              rectMatches(fullOverlay, CGRect(origin: .zero, size: canvas)),
+              rectMatches(videoOverlay, CGRect(x: 10, y: 10, width: 1000, height: 1000)),
+              zero == .zero else {
+            throw SmokeError.failedFiles(["ROI gestures and overlays must share the full-video 1% overscan bounds"])
+        }
+        let region = OCRRegion(id: "edge-tc", label: "edge", kind: .timecode, normalizedRect: bottom)
+        let preset = ROIPreset(name: "edge-test", regions: [region])
+        let restored = try JSONDecoder().decode(ROIPreset.self, from: JSONEncoder().encode(preset))
+        guard let saved = restored.ocrRegions.first, rectMatches(saved.normalizedRect, bottom) else {
+            throw SmokeError.failedFiles(["ROI preset round-trip must preserve selection below the video"])
+        }
+        print("ROI 1% overscan geometry, reverse drags, bounds and preset round-trip passed")
+    }
+
+    private static func rectMatches(_ lhs: CGRect, _ rhs: CGRect) -> Bool {
+        abs(lhs.minX - rhs.minX) < 0.000001 && abs(lhs.minY - rhs.minY) < 0.000001
+            && abs(lhs.width - rhs.width) < 0.000001 && abs(lhs.height - rhs.height) < 0.000001
+    }
+
     private static func verifyTimecodeCropBoundary() throws {
         let context = CGContext(
             data: nil, width: 1000, height: 1000, bitsPerComponent: 8,
             bytesPerRow: 0, space: CGColorSpaceCreateDeviceRGB(),
             bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
         )
+        context?.setFillColor(CGColor(red: 1, green: 0, blue: 0, alpha: 1))
+        context?.fill(CGRect(x: 0, y: 0, width: 1000, height: 500))
+        context?.setFillColor(CGColor(red: 0, green: 0, blue: 1, alpha: 1))
+        context?.fill(CGRect(x: 0, y: 500, width: 1000, height: 500))
         guard let image = context?.makeImage() else {
             throw SmokeError.failedFiles(["could not create crop fixture"])
         }
@@ -229,7 +277,42 @@ struct RunAsyncAnalyzerSmoke {
               outside == nil else {
             throw SmokeError.failedFiles(["timecode crop must respect the selection; other fields retain their margin"])
         }
-        print("Timecode crop boundary cases passed")
+        let paddedCases: [(CGRect, CGPoint, CGPoint, CGPoint)] = [
+            (CGRect(x: 0.8, y: 0.96, width: 0.15, height: 0.05),
+             CGPoint(x: 850, y: 980), CGPoint(x: 50, y: 20), CGPoint(x: 50, y: 49)),
+            (CGRect(x: 0.8, y: -0.01, width: 0.15, height: 0.05),
+             CGPoint(x: 850, y: 20), CGPoint(x: 50, y: 30), CGPoint(x: 50, y: 0)),
+            (CGRect(x: -0.01, y: 0.8, width: 0.05, height: 0.15),
+             CGPoint(x: 20, y: 850), CGPoint(x: 30, y: 50), CGPoint(x: 0, y: 50)),
+            (CGRect(x: 0.96, y: 0.8, width: 0.05, height: 0.15),
+             CGPoint(x: 980, y: 850), CGPoint(x: 20, y: 50), CGPoint(x: 49, y: 50))
+        ]
+        for (rect, sourcePoint, cropPoint, paddingPoint) in paddedCases {
+            guard let cropped = processor.crop(image, to: rect, kind: .timecode),
+                  cropped.width == Int((rect.width * 1000).rounded()),
+                  cropped.height == Int((rect.height * 1000).rounded()),
+                  pixel(in: cropped, at: cropPoint) == pixel(in: image, at: sourcePoint),
+                  pixel(in: cropped, at: paddingPoint) == [0, 0, 0, 255] else {
+                throw SmokeError.failedFiles(["overscan crop must retain edge pixels in place with opaque black padding: \(rect)"])
+            }
+        }
+        print("Timecode crop boundary and four-edge pixel/padding cases passed")
+    }
+
+    private static func pixel(in image: CGImage, at point: CGPoint) -> [UInt8] {
+        guard let sample = image.cropping(to: CGRect(origin: point, size: CGSize(width: 1, height: 1))) else {
+            return []
+        }
+        var bytes = [UInt8](repeating: 0, count: 4)
+        bytes.withUnsafeMutableBytes { buffer in
+            let context = CGContext(
+                data: buffer.baseAddress, width: 1, height: 1, bitsPerComponent: 8, bytesPerRow: 4,
+                space: CGColorSpaceCreateDeviceRGB(),
+                bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue | CGBitmapInfo.byteOrder32Big.rawValue
+            )
+            context?.draw(sample, in: CGRect(x: 0, y: 0, width: 1, height: 1))
+        }
+        return bytes
     }
 
     private static func verifyAdaptivePreprocessing() throws {

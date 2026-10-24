@@ -427,8 +427,8 @@ struct ROIImageProcessor {
         } else {
             cropRect = normalizedRect
         }
-        let clamped = cropRect.intersection(CGRect(x: 0, y: 0, width: 1, height: 1))
-        guard !clamped.isNull, !clamped.isEmpty else {
+        let clamped = OCRSelectionGeometry.clamped(cropRect)
+        guard !clamped.isEmpty else {
             return nil
         }
 
@@ -439,7 +439,22 @@ struct ROIImageProcessor {
             height: clamped.height * height
         ).integral
 
-        return image.cropping(to: pixelRect)
+        let imageBounds = CGRect(x: 0, y: 0, width: width, height: height)
+        guard pixelRect.intersects(imageBounds) else { return nil }
+        if imageBounds.contains(pixelRect) {
+            return image.cropping(to: pixelRect)
+        }
+
+        // Outside-video selection is real OCR padding, not a larger source ROI.
+        // Core Image uses a bottom-left origin; selection coordinates use top-left.
+        let ciRect = CGRect(
+            x: pixelRect.minX, y: height - pixelRect.maxY,
+            width: pixelRect.width, height: pixelRect.height
+        )
+        let padded = CIImage(cgImage: image)
+            .composited(over: CIImage(color: .black))
+            .cropped(to: ciRect)
+        return context.createCGImage(padded, from: ciRect)
     }
 
     nonisolated func fallbackVariants(

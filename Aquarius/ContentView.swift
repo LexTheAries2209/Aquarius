@@ -411,36 +411,45 @@ struct ContentView: View {
     }
 
     private var videoCanvas: some View {
-        ZStack {
-            if let previewImage = viewModel.previewImage {
-                Image(nsImage: previewImage)
-                    .resizable()
-                    .scaledToFit()
-            }
+        GeometryReader { proxy in
+            let videoRect = OCRSelectionGeometry.videoRect(in: proxy.size)
+            ZStack {
+                ZStack {
+                    if let previewImage = viewModel.previewImage {
+                        Image(nsImage: previewImage)
+                            .resizable()
+                            .scaledToFit()
+                    }
 
-            if viewModel.player != nil {
-                PlayerLayerView(player: viewModel.player)
-            }
+                    if viewModel.player != nil {
+                        PlayerLayerView(player: viewModel.player)
+                    }
 
-            ROIEditorOverlay(
-                regions: viewModel.regions,
-                selectedRegionID: viewModel.selectedRegionID,
-                enabledFieldKinds: viewModel.enabledFieldKinds
-            ) { normalizedRect in
-                viewModel.updateSelectedRegion(to: normalizedRect)
-            }
+                    if !viewModel.isPlaying, let diagnostic = viewModel.previewDiagnosticMessage {
+                        PreviewDiagnosticOverlay(message: diagnostic)
+                            .allowsHitTesting(false)
+                    }
+                }
+                .frame(width: videoRect.width, height: videoRect.height)
+                .clipShape(RoundedRectangle(cornerRadius: 6))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 6)
+                        .stroke(Color.white.opacity(0.08), lineWidth: 1)
+                }
 
-            if !viewModel.isPlaying, let diagnostic = viewModel.previewDiagnosticMessage {
-                PreviewDiagnosticOverlay(message: diagnostic)
-                    .allowsHitTesting(false)
+                // The editor owns the full canvas, including the 1% outer band.
+                // Only the video is clipped, so edge handles remain visible.
+                ROIEditorOverlay(
+                    regions: viewModel.regions,
+                    selectedRegionID: viewModel.selectedRegionID,
+                    enabledFieldKinds: viewModel.enabledFieldKinds
+                ) { normalizedRect in
+                    viewModel.updateSelectedRegion(to: normalizedRect)
+                }
             }
+            .frame(width: proxy.size.width, height: proxy.size.height)
         }
         .aspectRatio(16.0 / 9.0, contentMode: .fit)
-        .clipShape(RoundedRectangle(cornerRadius: 6))
-        .overlay {
-            RoundedRectangle(cornerRadius: 6)
-                .stroke(Color.white.opacity(0.08), lineWidth: 1)
-        }
     }
 
     private var inspector: some View {
@@ -1548,7 +1557,7 @@ private struct ROIEditorOverlay: View {
         GeometryReader { proxy in
             ZStack(alignment: .topLeading) {
                 ForEach(regions) { region in
-                    let rect = overlayRect(for: region.normalizedRect, in: proxy.size)
+                    let rect = OCRSelectionGeometry.overlayRect(for: region.normalizedRect, in: proxy.size)
                     let isEnabled = enabledFieldKinds.contains(region.kind)
                     let isSelected = region.id == selectedRegionID && isEnabled
                     let borderColor = isEnabled ? color(for: region.kind) : Color.white.opacity(0.35)
@@ -1587,7 +1596,9 @@ private struct ROIEditorOverlay: View {
             .gesture(
                 DragGesture(minimumDistance: 2, coordinateSpace: .local)
                     .onChanged { value in
-                        onRectChanged(normalizedRect(from: value.startLocation, to: value.location, in: proxy.size))
+                        onRectChanged(OCRSelectionGeometry.normalizedRect(
+                            from: value.startLocation, to: value.location, in: proxy.size
+                        ))
                     }
             )
         }
@@ -1622,34 +1633,6 @@ private struct ROIEditorOverlay: View {
             CGPoint(x: rect.minX, y: rect.maxY),
             CGPoint(x: rect.maxX, y: rect.maxY)
         ]
-    }
-
-    private func normalizedRect(from start: CGPoint, to end: CGPoint, in size: CGSize) -> CGRect {
-        guard size.width > 0, size.height > 0 else {
-            return .zero
-        }
-
-        let minX = min(start.x, end.x) / size.width
-        let minY = min(start.y, end.y) / size.height
-        let maxX = max(start.x, end.x) / size.width
-        let maxY = max(start.y, end.y) / size.height
-        let rect = CGRect(
-            x: min(max(minX, 0), 1),
-            y: min(max(minY, 0), 1),
-            width: min(max(maxX - minX, 0.012), 1),
-            height: min(max(maxY - minY, 0.012), 1)
-        )
-
-        return rect.intersection(CGRect(x: 0, y: 0, width: 1, height: 1))
-    }
-
-    private func overlayRect(for normalizedRect: CGRect, in size: CGSize) -> CGRect {
-        CGRect(
-            x: normalizedRect.minX * size.width,
-            y: normalizedRect.minY * size.height,
-            width: normalizedRect.width * size.width,
-            height: normalizedRect.height * size.height
-        )
     }
 
     private func color(for kind: OCRFieldKind) -> Color {

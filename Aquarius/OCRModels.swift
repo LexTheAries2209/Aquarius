@@ -50,6 +50,53 @@ struct OCRRegion: Identifiable, Equatable, Sendable {
     ]
 }
 
+enum OCRSelectionGeometry {
+    // Margin is relative to the full video, not to the size of an OCR field.
+    nonisolated static let margin: CGFloat = 0.01
+    nonisolated static let bounds = CGRect(x: -margin, y: -margin, width: 1 + 2 * margin, height: 1 + 2 * margin)
+
+    nonisolated static func videoRect(in canvasSize: CGSize) -> CGRect {
+        let width = canvasSize.width / bounds.width
+        let height = canvasSize.height / bounds.height
+        return CGRect(x: width * margin, y: height * margin, width: width, height: height)
+    }
+
+    nonisolated static func overlayRect(for rect: CGRect, in canvasSize: CGSize) -> CGRect {
+        let video = videoRect(in: canvasSize)
+        return CGRect(
+            x: video.minX + rect.minX * video.width,
+            y: video.minY + rect.minY * video.height,
+            width: rect.width * video.width,
+            height: rect.height * video.height
+        )
+    }
+
+    nonisolated static func normalizedRect(from start: CGPoint, to end: CGPoint, in canvasSize: CGSize) -> CGRect {
+        let video = videoRect(in: canvasSize)
+        guard video.width > 0, video.height > 0 else { return .zero }
+        let minX = max(bounds.minX, min(bounds.maxX, (min(start.x, end.x) - video.minX) / video.width))
+        let minY = max(bounds.minY, min(bounds.maxY, (min(start.y, end.y) - video.minY) / video.height))
+        let maxX = max(bounds.minX, min(bounds.maxX, (max(start.x, end.x) - video.minX) / video.width))
+        let maxY = max(bounds.minY, min(bounds.maxY, (max(start.y, end.y) - video.minY) / video.height))
+        let width = max(0.012, maxX - minX)
+        let height = max(0.012, maxY - minY)
+        return CGRect(
+            x: min(minX, bounds.maxX - width),
+            y: min(minY, bounds.maxY - height),
+            width: width, height: height
+        )
+    }
+
+    nonisolated static func clamped(_ rect: CGRect) -> CGRect {
+        guard rect.origin.x.isFinite, rect.origin.y.isFinite,
+              rect.width.isFinite, rect.height.isFinite, rect.width > 0, rect.height > 0 else {
+            return .zero
+        }
+        let clamped = rect.intersection(bounds)
+        return clamped.isNull ? .zero : clamped
+    }
+}
+
 struct SampleVideo: Identifiable {
     let fileName: String
     let displayName: String
@@ -837,8 +884,9 @@ struct ROIPresetRegion: Codable, Equatable, Sendable {
             id: id,
             label: label,
             kind: kind,
-            normalizedRect: CGRect(x: CGFloat(x), y: CGFloat(y), width: CGFloat(width), height: CGFloat(height))
-                .intersection(CGRect(x: 0, y: 0, width: 1, height: 1))
+            normalizedRect: OCRSelectionGeometry.clamped(
+                CGRect(x: CGFloat(x), y: CGFloat(y), width: CGFloat(width), height: CGFloat(height))
+            )
         )
     }
 }
