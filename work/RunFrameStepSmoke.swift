@@ -9,6 +9,7 @@ struct RunFrameStepSmoke {
     @MainActor
     static func main() async throws {
         try verifyKeyboardRouting()
+        try await verifyHeldKeyTiming()
         let root = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
         let bundled = [
             "qtake_A001_bottom_left_24fps.mov",
@@ -42,7 +43,9 @@ struct RunFrameStepSmoke {
             )!
         }
         try check(view.handleKeyDown(event(124)) == nil, "right arrow must be consumed")
+        try check(view.handleKeyUp(keyEvent(124, type: .keyUp, window: window)) == nil, "right key-up must be consumed")
         try check(view.handleKeyDown(event(123)) == nil, "left arrow must be consumed")
+        try check(view.handleKeyUp(keyEvent(123, type: .keyUp, window: window)) == nil, "left key-up must be consumed")
         try check(steps == [1, -1], "each arrow press must issue exactly one frame step")
         try check(view.handleKeyDown(event(124, repeatKey: true)) == nil, "held-key repeat must be consumed")
         try check(steps == [1, -1], "held-key repeat must not advance another frame")
@@ -63,6 +66,62 @@ struct RunFrameStepSmoke {
         try check(steps == [1, -1], "routing exclusions must not issue frame steps")
         view.removeFromSuperview()
         print("Keyboard routing passed: arrows, repeat suppression, modifiers, text editing, inactive and unloaded states")
+        fflush(stdout)
+    }
+
+    @MainActor
+    private static func keyEvent(_ code: UInt16, type: NSEvent.EventType = .keyDown, window: NSWindow) -> NSEvent {
+        NSEvent.keyEvent(
+            with: type, location: .zero, modifierFlags: [], timestamp: 0,
+            windowNumber: window.windowNumber, context: nil,
+            characters: "", charactersIgnoringModifiers: "", isARepeat: false, keyCode: code
+        )!
+    }
+
+    @MainActor
+    private static func verifyHeldKeyTiming() async throws {
+        let window = KeyboardTestWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 200, height: 100),
+            styleMask: [.titled], backing: .buffered, defer: false
+        )
+        let view = FrameStepKeyView()
+        window.contentView?.addSubview(view)
+        defer { view.removeFromSuperview() }
+        var readings: [(Int, Double)] = []
+        view.isEnabled = { true }
+        view.onStep = { readings.append(($0, ProcessInfo.processInfo.systemUptime)) }
+
+        _ = view.handleKeyDown(keyEvent(124, window: window))
+        _ = view.handleKeyUp(keyEvent(124, type: .keyUp, window: window))
+        try await Task.sleep(for: .milliseconds(500))
+        try check(readings.count == 1, "a tap must remain one frame after the hold threshold")
+        for (code, direction) in [(UInt16(124), 1), (UInt16(123), -1)] {
+            let baseline = readings.count
+            _ = view.handleKeyDown(keyEvent(code, window: window))
+            try await waitUntil("eight held-key repeat frames") { readings.count >= baseline + 9 }
+            _ = view.handleKeyUp(keyEvent(code, type: .keyUp, window: window))
+            let repeats = Array(readings[(baseline + 1)...])
+            let elapsed = repeats.last!.1 - repeats.first!.1
+            try check(repeats.count == 8 && repeats.allSatisfy { $0.0 == direction },
+                      "a held arrow must repeat only in its requested direction")
+            try check(abs(elapsed - 7.0 / 8.0) < 0.2, "held-key repeat must run at 8 fps")
+            let releasedCount = readings.count
+            try await Task.sleep(for: .milliseconds(250))
+            try check(readings.count == releasedCount, "release must stop all repeat frames")
+        }
+        for name in [NSWindow.didResignKeyNotification, NSApplication.didResignActiveNotification] {
+            _ = view.handleKeyDown(keyEvent(124, window: window))
+            let stoppedCount = readings.count
+            NotificationCenter.default.post(name: name, object: name == NSWindow.didResignKeyNotification ? window : NSApp)
+            try await Task.sleep(for: .milliseconds(450))
+            try check(readings.count == stoppedCount, "focus loss must stop held-key playback")
+        }
+        _ = view.handleKeyDown(keyEvent(124, window: window))
+        let switchedCount = readings.count
+        view.playbackID = ObjectIdentifier(window)
+        try await Task.sleep(for: .milliseconds(450))
+        try check(readings.count == switchedCount, "switching media must cancel held-key playback")
+        print("Held-key playback passed: single taps, 8 fps both directions, release, focus loss and media switch")
         fflush(stdout)
     }
 
@@ -98,6 +157,7 @@ struct RunFrameStepSmoke {
         try await waitUntil("five rapid backward presses") {
             abs(player.currentTime().seconds) < clockTolerance(player)
         }
+        try await verifyHeldFrames(model, frameDuration: frameDuration)
 
         player.play()
         model.isPlaying = true
@@ -128,6 +188,29 @@ struct RunFrameStepSmoke {
         model.clearMediaList()
         print("\(url.lastPathComponent): one-frame forward/backward, rapid presses, pause, boundaries and frame badge passed")
         fflush(stdout)
+    }
+
+    @MainActor
+    private static func verifyHeldFrames(_ model: AnalysisViewModel, frameDuration: CMTime) async throws {
+        let window = KeyboardTestWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 200, height: 100),
+            styleMask: [.titled], backing: .buffered, defer: false
+        )
+        let view = FrameStepKeyView()
+        window.contentView?.addSubview(view)
+        defer { view.removeFromSuperview() }
+        view.isEnabled = { model.canStepVideoFrames }
+        view.onStep = { model.stepFrame(by: $0) }
+        _ = view.handleKeyDown(keyEvent(124, window: window))
+        try await waitUntil("five held frames") { model.currentFrameText == "5" }
+        _ = view.handleKeyUp(keyEvent(124, type: .keyUp, window: window))
+        let player = model.player!
+        try await waitUntil("held-frame video seek") {
+            abs(player.currentTime().seconds - frameDuration.seconds * 5) < clockTolerance(player)
+        }
+        try await Task.sleep(for: .milliseconds(200))
+        try check(model.currentFrameText == "5" && player.rate == 0,
+                  "video must stay paused on the released frame")
     }
 
     @MainActor

@@ -93,7 +93,7 @@ V1.1.1 的中文发布说明见 [docs/releases/v1.1.1.zh-CN.md](docs/releases/v1
    - 写入 TMCD。
    - 烧录时间码并改名到新文件夹。
 
-预览时，点按左方向键后退一帧，点按右方向键前进一帧；会先暂停播放。长按不连续走帧，在文本框中编辑时方向键保持原有行为。
+预览时，点按左方向键后退一帧，点按右方向键前进一帧；会先暂停播放。长按约 0.35 秒后按每秒 8 帧连续前进或后退，松开即停；在文本框中编辑时方向键保持原有行为。
 
 ### DaVinci Resolve CSV
 
@@ -244,7 +244,7 @@ Common use cases:
 7. Correct metadata manually if needed.
 8. Export metadata, copy and rename files, write TMCD, or burn-and-rename into a new folder.
 
-In the preview, press Left Arrow for the previous video frame or Right Arrow for the next. Stepping pauses playback; holding a key does not repeat, and text fields retain their normal arrow-key behavior.
+In the preview, press Left Arrow for the previous video frame or Right Arrow for the next. Stepping pauses playback; hold either key for about 0.35 seconds to move at 8 video frames per second, and release it to stop. Text fields retain their normal arrow-key behavior.
 
 ### DaVinci Resolve CSV
 
