@@ -6,9 +6,11 @@ Aquarius is a local macOS utility for recovering clip metadata from burned-in pi
 
 Aquarius 是一个本地 macOS 工具，用于从视频画面里已经烧录的文字信息中恢复素材元数据。它主要面向 QTake、现场监看录制、dailies 或代理文件场景：画面上能看到文件名、卷号和源时间码，但文件自身缺少可靠的剪辑元数据。
 
-[Latest Release / 最新版本](https://github.com/LexTheAries2209/Aquarius/releases/latest): `v1.1.1`
+[Latest Release / 最新版本](https://github.com/LexTheAries2209/Aquarius/releases/latest): `v1.2.0`
 
-Bilingual release notes / 双语发布说明：[docs/releases/v1.1.1.md](docs/releases/v1.1.1.md)
+Bilingual release notes / 双语发布说明：[docs/releases/v1.2.0.md](docs/releases/v1.2.0.md)
+
+Release Log / 发布记录：[CHANGELOG.md](CHANGELOG.md)
 
 ---
 
@@ -20,11 +22,11 @@ Aquarius 不是剪辑软件，也不是完整的媒体资产管理系统。它�
 
 ### 下载和安装
 
-1. 前往 [GitHub Releases](https://github.com/LexTheAries2209/Aquarius/releases/latest) 下载 `Aquarius-v1.1.1-macOS.zip`。
-2. 解压后把 `Aquarius V1.1.1.app` 放到 `Applications` 或你的本地工具目录。
+1. 前往 [GitHub Releases](https://github.com/LexTheAries2209/Aquarius/releases/latest) 下载 `Aquarius-v1.2.0-macOS.zip`。
+2. 解压后把 `Aquarius V1.2.0.app` 放到 `Applications` 或你的本地工具目录。
 3. 首次打开时，如果 macOS Gatekeeper 提示来自互联网下载的 App，请在 Finder 中右键点击 App 后选择“打开”，或在“系统设置 > 隐私与安全性”中允许打开。
 
-V1.1.1 的中文发布说明见 [docs/releases/v1.1.1.zh-CN.md](docs/releases/v1.1.1.zh-CN.md)。
+V1.2.0 的中文发布说明见 [docs/releases/v1.2.0.zh-CN.md](docs/releases/v1.2.0.zh-CN.md)。
 
 典型用途：
 
@@ -60,7 +62,7 @@ V1.1.1 的中文发布说明见 [docs/releases/v1.1.1.zh-CN.md](docs/releases/v1
 
 - 当前源码与后续发布版：Apple silicon（M 系列芯片），macOS `14.0` 或更新版本；使用发布版不需要 Xcode。
 - 历史 V1.0.3 下载包仍是同时支持 Apple silicon 和 Intel 的 universal 构建；这一兼容范围不代表后续版本。
-- V1.1.1 使用 Apple Development 签名，但不是 Developer ID 公证发行；Gatekeeper 可能要求通过 Finder 右键“打开”或“隐私与安全性”确认。
+- V1.2.0 未签名且未经公证；首次打开时 macOS 可能要求在 Finder 中右键选择“打开”或在“隐私与安全性”中确认。
 - 从源码构建：需要 Xcode，当前工程使用 SwiftUI / AVFoundation / CoreImage / CoreMedia / Vision。
 - 当前源码工程配置：
   - Swift `5.0`
@@ -155,7 +157,7 @@ Avid ALE 导出会生成 tab 分隔的三段式文本：`Heading`、`Column`、`
 ### 当前限制
 
 - OCR 依赖画面文字清晰度和 ROI 位置；不同叠字布局通常需要单独的 ROI 预设。
-- 当前正式识别器仍是 Apple Vision；V1.1.1 没有内置 PP-OCR、ONNX Runtime 或 Core ML OCR 模型。
+- 当前正式识别器仍是 Apple Vision；V1.2.0 没有内置 PP-OCR、ONNX Runtime 或 Core ML OCR 模型。
 - 内置样片回归已通过，但真实项目素材尚未形成完整盲测基准，位置约束纠错不能替代人工复核。
 - 自动源 TC 帧率推断只测试 24、25、30；23.976 和 29.97 需要手动选择。
 - 23.976 使用 24 帧号制标签，并按 24000/1001 计数生成当前 TC 和 CSV。
@@ -176,11 +178,11 @@ Aquarius is not an editor or a full media asset manager. It focuses on one job: 
 
 ### Download And Install
 
-1. Download `Aquarius-v1.1.1-macOS.zip` from [GitHub Releases](https://github.com/LexTheAries2209/Aquarius/releases/latest).
-2. Unzip it and move `Aquarius V1.1.1.app` to `Applications` or your local tools folder.
+1. Download `Aquarius-v1.2.0-macOS.zip` from [GitHub Releases](https://github.com/LexTheAries2209/Aquarius/releases/latest).
+2. Unzip it and move `Aquarius V1.2.0.app` to `Applications` or your local tools folder.
 3. On first launch, if macOS Gatekeeper shows an internet-download warning, right-click the app in Finder and choose Open, or allow it from System Settings > Privacy & Security.
 
-English release notes for V1.1.1 are available at [docs/releases/v1.1.1.en.md](docs/releases/v1.1.1.en.md).
+English release notes for V1.2.0 are available at [docs/releases/v1.2.0.en.md](docs/releases/v1.2.0.en.md).
 
 Common use cases:
 
@@ -217,7 +219,7 @@ Common use cases:
 
 - Current source and future releases: Apple silicon (M-series), macOS `14.0` or later; Xcode is not required for release builds.
 - The historical V1.0.3 download remains a universal Apple silicon and Intel build; that compatibility does not apply to future releases.
-- V1.1.1 is Apple Development signed but is not a notarized Developer ID distribution. Gatekeeper may require Finder > Open or approval in Privacy & Security.
+- V1.2.0 is unsigned and not notarized. macOS may require Finder > Open or approval in Privacy & Security on first launch.
 - Source build: Xcode with SwiftUI, AVFoundation, CoreImage, CoreMedia, and Vision support.
 - Current source project settings:
   - Swift `5.0`
@@ -341,6 +343,6 @@ App icons, branding assets, and bundled sample videos are not covered by the GPL
 
 ## Version Naming / 版本命名
 
-The public Display Name uses a three-part version label composed from Xcode Version and Build. For example, `Version = 1.1` and `Build = 1` produces `Aquarius V1.1.1`.
+The public Display Name uses a three-part version label composed from Xcode Version and Build. V1.2.0 uses `Version = 1.2` and `Build = 0`, producing `Aquarius V1.2.0`.
 
-公开显示名使用由 Xcode Version 和 Build 组成的三段式版本名。例如，`Version = 1.1`、`Build = 1` 时，Display Name 显示为 `Aquarius V1.1.1`。
+公开显示名使用由 Xcode Version 和 Build 组成的三段式版本名。V1.2.0 使用 `Version = 1.2`、`Build = 0`，显示名为 `Aquarius V1.2.0`。
