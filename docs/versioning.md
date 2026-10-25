@@ -4,50 +4,44 @@
 
 ### 已发布基线
 
-2026-10-25 核对 Aquarius 的正式 GitHub Releases，共 5 个：`v1.0.1`、`v1.0.2`、`v1.0.3`、`v1.1.1` 和 `v1.2.1`。最新的 V1.2.1 实际使用 Xcode `Version = 1.2`、`Build = 1`。历史标签、安装包和发布说明保持原样。
+2026-10-25 核对 Aquarius 的正式 GitHub Releases，共 5 个：`v1.0.1`、`v1.0.2`、`v1.0.3`、`v1.1.1` 和 `v1.2.1`。最新的历史 V1.2.1 实际使用 Xcode `Version = 1.2`、`Build = 1`，其 App 名为 `Aquarius V1.2.1.app`。历史标签、安装包和发布说明保持原样。
 
-以这 5 个可验证的正式发布作为一次性序号基线，后续首个发布构建从 `0006` 开始。`0005` 是历史计数，不代表 V1.2.1 安装包中实际写入了 `0005`；Sparkle 会把旧版的 `CFBundleVersion = 1` 与新版本的四位数字构建号按数值比较。
+以这 5 个可验证的正式发布作为一次性发布构建序号基线。V1.3.0 是迁移后首个发布构建，使用 `Build = 0006`；`0005` 是迁移序号，不代表历史 V1.2.1 安装包中实际写入了 `0005`。Sparkle 会把旧版 `CFBundleVersion = 1` 与新版本四位数字构建号按数值比较。
 
 ### 后续发布规则
 
-- `MARKETING_VERSION` / `CFBundleShortVersionString` 使用完整语义版本号，例如 `1.2.2`；公开标签为 `v1.2.2`。
-- `CURRENT_PROJECT_VERSION` / `CFBundleVersion` 使用独立、全局递增的四位十进制发布构建号，例如首个新格式发布为 `0006`，之后为 `0007`。换主/次版本时不归零。
-- 普通 Debug 编译、测试和同一候选版本的重复验证不消耗发布构建号。每次新分发构建分配新号；已对外分发或放弃的号不得复用。
-- 发布前同时核对 GitHub Releases、实际上一版 App 元数据以及 `Configuration/ReleaseBuilds.json`。分配构建号时只新增未绑定版本/标签的 `reserved` 记录；发布后写入真实版本/标签并将状态改为 `published`。
+- `MARKETING_VERSION` / `CFBundleShortVersionString` 使用完整语义版本号，例如 `1.3.0`；公开标签为 `v1.3.0`。
+- `CURRENT_PROJECT_VERSION` / `CFBundleVersion` 使用独立、全局递增的四位十进制发布构建号，例如 `0006`、`0007`。换主/次版本时不归零，也不拼接进公开版本号。
+- 构建号按实际准备对外分发的发布构建次数递增；普通 Debug 编译、单元测试、同一候选版本的重复验证不消耗新编号。已经分发或放弃的编号不得复用。
+- 发布前同时核对 GitHub Releases、上一版 App 元数据以及 `Configuration/ReleaseBuilds.json`。新发布构建先在台账中记录为 `reserved`；发布后补齐版本、标签并改为 `published`。
 - 同步 Aquarius target 的 Debug/Release 配置。测试工具和 Sparkle fixture 使用独立标识，不参与发布构建计数。
-- `CFBundleDisplayName` 为 `Aquarius V<完整版本>`；更新 appcast 的 `sparkle:version` 必须与四位 `CFBundleVersion` 完全一致并保留前导零。
-- 首个包含 Sparkle 的发行版不会覆盖历史包。V1.2.1 及更早版本不含 updater，用户需先手动升级；只有已经安装包含 updater 的版本后，才可通过 Sparkle 获取后续更新。
+- 从 V1.3.0 起，App 文件名及 `CFBundleDisplayName` 固定为 `Aquarius.app` / `Aquarius`；版本号由 `CFBundleShortVersionString` 单独表达。Sparkle appcast 的 `sparkle:version` 必须与四位 `CFBundleVersion` 完全一致并保留前导零。
+- V1.2.1 及更早版本不含 updater。用户需先从 GitHub Releases 手动安装 V1.3.0；之后的版本可由 Sparkle 更新。
+- 发布前检查上一版实际写入的构建号。首次迁移的 ZIP 准备基线为 `--previous-build 0005`；公开 feed 探测则使用 V1.2.1 实际 `CFBundleVersion = 1`。后续发布根据已发布的全局构建台账设置准备基线，并用实际客户端版本验证更新发现。
 
-### 签名更新发布
+Aquarius 使用独立的 Sparkle EdDSA 账户 `lex.Aquarius`。EdDSA 签名用于验证更新清单和 ZIP，不等同于 macOS 代码签名、Developer ID 或 Apple 公证。私钥只保存在发布者登录钥匙串中，不得导出、打印、重建或替换。
 
-Aquarius 使用独立的 Sparkle EdDSA account `lex.Aquarius`。它与 macOS Developer ID / ad-hoc 代码签名用途不同：EdDSA 必须验证 appcast 和下载 ZIP；代码签名、公证状态单独核实和描述。
-
-生产公钥位于 `Configuration/Info.plist` 的 `SUPublicEDKey`。私钥只保存在发布者的登录钥匙串；不得导出、打印、重建或替换。若本机缺少该账户的既有密钥，停止签名发布并恢复备份密钥。
-
-完整发版步骤、固定 `Aquarius.app` 包装、历史备份和发布资产目录见 [Sparkle 更新发布规则](sparkle-updates.md)。签名 ZIP 不得在签名后修改。先上传 ZIP，验证成功后最后上传 `appcast.xml`。
+完整发布流程、稳定 App 包名、备份目录及签名资产布局见 [Sparkle 更新发布规则](sparkle-updates.md)。签名 ZIP 不得再修改；发布时先上传 ZIP，最后上传 `appcast.xml`。
 
 ## English
 
 ### Published baseline
 
-The stable Aquarius GitHub Releases were checked on October 25, 2026: `v1.0.1`, `v1.0.2`, `v1.0.3`, `v1.1.1`, and `v1.2.1`. The latest historical V1.2.1 App actually used Xcode `Version = 1.2` and `Build = 1`. Existing tags, packages, and release notes remain unchanged.
+The five stable Aquarius GitHub Releases were verified on October 25, 2026: `v1.0.1`, `v1.0.2`, `v1.0.3`, `v1.1.1`, and `v1.2.1`. The latest historical V1.2.1 App used Xcode `Version = 1.2` and `Build = 1`, with the name `Aquarius V1.2.1.app`. Existing tags, packages, and release notes remain unchanged.
 
-These five verifiable releases establish a one-time ordinal baseline. The first release build under the new scheme starts at `0006`. Historical ordinal `0005` is not a claim about the metadata shipped in V1.2.1; Sparkle compares its old `CFBundleVersion = 1` numerically with the new padded build.
+These five verifiable releases form a one-time release-build sequence baseline. V1.3.0 is the first build after migration and uses `Build = 0006`. Historical ordinal `0005` is not metadata from the V1.2.1 App; Sparkle compares its actual `CFBundleVersion = 1` numerically with the new four-digit build.
 
 ### Future release rules
 
-- `MARKETING_VERSION` / `CFBundleShortVersionString` contains the complete semantic version, such as `1.2.2`; the public tag is `v1.2.2`.
-- `CURRENT_PROJECT_VERSION` / `CFBundleVersion` is an independent, globally increasing four-digit decimal release-build number. The first new-format release starts at `0006`, followed by `0007`; it never resets for a new marketing version.
-- Debug builds, tests, and repeated validation of the same candidate do not allocate new release numbers. Allocate one for each new distributable build and never reuse a distributed or abandoned number.
-- Before a release, compare GitHub Releases, the actual prior App metadata, and `Configuration/ReleaseBuilds.json`. Record a new allocation as `reserved` without inventing a version or tag; fill those fields and mark it `published` only after publication.
-- Keep the Aquarius target's Debug and Release configurations synchronized. Test tools and Sparkle fixtures use separate identifiers and do not consume release build numbers.
-- Set `CFBundleDisplayName` to `Aquarius V<complete-version>`. The appcast `sparkle:version` must exactly match the four-digit `CFBundleVersion`, including leading zeros.
-- The first Sparkle-enabled release does not replace historical packages. V1.2.1 and earlier lack the updater and require a manual upgrade; Sparkle can deliver later updates only after an updater-enabled version is installed.
+- `MARKETING_VERSION` / `CFBundleShortVersionString` contains the complete semantic version, such as `1.3.0`; its public tag is `v1.3.0`.
+- `CURRENT_PROJECT_VERSION` / `CFBundleVersion` is an independent, globally increasing four-digit decimal release-build number, such as `0006` then `0007`. It does not reset for a new marketing version and is not appended to the public version.
+- Increment Build for each release build prepared for distribution. Debug compilations, tests, and repeated validation of the same candidate do not consume a new number. Never reuse a distributed or abandoned allocation.
+- Before a release, compare GitHub Releases, the actual previous App metadata, and `Configuration/ReleaseBuilds.json`. Record the new allocation as `reserved`; after publication, set its exact version and tag and mark it `published`.
+- Keep the Aquarius target's Debug and Release settings synchronized. Test tools and Sparkle fixtures use separate identifiers and do not consume release-build numbers.
+- Starting with V1.3.0, the App filename and `CFBundleDisplayName` are fixed as `Aquarius.app` / `Aquarius`; `CFBundleShortVersionString` carries the version separately. The appcast `sparkle:version` must exactly match the four-digit `CFBundleVersion`, including leading zeros.
+- V1.2.1 and earlier lack the updater. Users must manually install V1.3.0 from GitHub Releases once; later versions can be delivered through Sparkle.
+- Check the actual prior App build before publication. The initial ZIP-preparation migration baseline is `--previous-build 0005`, while the public-feed probe uses V1.2.1's actual `CFBundleVersion = 1`. For later releases, use the published global build ledger for preparation and verify discovery from the actual installed client version.
 
-### Signed updates
+Aquarius uses its own Sparkle EdDSA account, `lex.Aquarius`. EdDSA signatures verify the update feed and ZIP; they are separate from macOS code signing, Developer ID identity, and Apple notarization. The private key remains in the publisher's login keychain and must never be exported, printed, regenerated, or replaced.
 
-Aquarius uses its own Sparkle EdDSA account, `lex.Aquarius`, separate from macOS Developer ID or ad-hoc code signing. EdDSA verification is required for both the appcast and downloaded ZIP; code-signing and notarization status are checked and reported separately.
-
-The production public key is in `SUPublicEDKey` in `Configuration/Info.plist`. The private key remains in the publisher's login keychain. Never export, print, regenerate, or replace it. If the existing account key is unavailable, stop signed publication and restore the backed-up key.
-
-See the [Sparkle update release policy](sparkle-updates.md) for the release procedure, stable `Aquarius.app` package root, historical backup, and asset layout. Never modify a ZIP after signing it. Upload the ZIP first, verify it, and upload `appcast.xml` last.
+See the [Sparkle update release policy](sparkle-updates.md) for the complete release workflow, stable App name, backup layout, and signed assets. Never alter a signed ZIP; upload the ZIP first and `appcast.xml` last.

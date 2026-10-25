@@ -23,7 +23,7 @@ def main():
     parser.add_argument("--output", required=True, type=pathlib.Path)
     parser.add_argument("--download-url-prefix", required=True)
     parser.add_argument("--release-notes", required=True, type=pathlib.Path)
-    parser.add_argument("--previous-build", default="0005")
+    parser.add_argument("--previous-build", required=True)
     args = parser.parse_args()
 
     app = args.app.resolve()
@@ -52,6 +52,8 @@ def main():
     build = info.get("CFBundleVersion", "")
     if info.get("CFBundleIdentifier") != "lex.Aquarius":
         parser.error("Unexpected app bundle identifier.")
+    if info.get("CFBundleDisplayName") != "Aquarius":
+        parser.error("The release App must keep the stable Aquarius display name.")
     if not re.fullmatch(r"\d+\.\d+\.\d+", version):
         parser.error("A complete semantic marketing version is required.")
     if not re.fullmatch(r"[0-9]{4}", build) or int(build) == 0:

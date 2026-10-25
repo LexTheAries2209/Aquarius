@@ -36,7 +36,7 @@ private final class FixtureDelegate: NSObject, NSApplicationDelegate {
 
         root = URL(fileURLWithPath: rootPath, isDirectory: true)
         self.scenario = scenario
-        if build == "0002" {
+        if build == "0006" {
             finish([
                 "result": "updated",
                 "build": build,

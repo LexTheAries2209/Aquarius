@@ -63,8 +63,8 @@ final class AppUpdater: NSObject, SPUUpdaterDelegate, @preconcurrency SPUStandar
     }
 
     var currentVersion: String {
-        hostBundle.object(forInfoDictionaryKey: "CFBundleDisplayName") as? String
-            ?? hostBundle.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String
+        hostBundle.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String
+            ?? hostBundle.object(forInfoDictionaryKey: "CFBundleDisplayName") as? String
             ?? "Aquarius"
     }
 

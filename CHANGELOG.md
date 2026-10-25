@@ -1,5 +1,12 @@
 # Aquarius Release Log
 
+## V1.3.0 - 2026-10-26
+
+[GitHub Release](https://github.com/LexTheAries2209/Aquarius/releases/tag/v1.3.0) · [Release notes](docs/releases/v1.3.0.md)
+
+- 中文：加入 Sparkle 签名更新，将 App 名称固定为 Aquarius，并使用独立版本号和全局发布构建号。
+- English: Added signed Sparkle updates, a stable Aquarius App name, and separate semantic version and global release-build numbers.
+
 ## V1.2.1 - 2026-10-25
 
 [GitHub Release](https://github.com/LexTheAries2209/Aquarius/releases/tag/v1.2.1) · [Release notes](docs/releases/v1.2.1.md)

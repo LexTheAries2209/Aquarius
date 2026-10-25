@@ -12,6 +12,7 @@
 - 已有视频识别、批处理或文件处理任务时，不开始下载；任务在下载期间启动则取消下载。已下载/解包的更新若遇到任务冲突或用户取消，必须用 Sparkle 的 skip/cancel 路径取消安装，不能用 dismiss 保留“退出时继续安装”。
 - 用户确认安装后先预留应用操作，暂停媒体播放并阻止新任务，再让 Sparkle 退出、替换和重启应用。普通退出若碰到待确认的预备安装，先取消安装，再完成退出。
 - V1.2.1 及更早已发布版本没有 Sparkle。它们不会收到此 feed 的更新；首个包含 updater 的新版需手动安装，此后的版本才可使用 Sparkle 链路。
+- V1.3.0 是首个包含 updater 的发布版本。其 Finder/App 名称为稳定的 `Aquarius.app` / `Aquarius`，完整语义版本与独立四位 Build 分别保存在版本元数据中。
 - Sparkle EdDSA 签名不等于 Developer ID 代码签名，也不证明 Apple notarization 或 Gatekeeper 信任。逐项报告实际状态，不得互相替代。
 - 发布 App 的代码签名仍须通过 `codesign --verify --deep --strict`；有效的 ad-hoc 签名可以满足本链路，不代表 Developer ID 或公证。Sparkle 包和清单必须再独立通过 EdDSA 签名验证。
 
@@ -81,6 +82,7 @@ This policy is specific to Aquarius (`lex.Aquarius`). Sparkle 2.10.0 is pinned i
 - Do not begin a download while media recognition, batch, or file processing is active. Cancel an in-progress download if work starts. If work conflicts with a downloaded/prepared update or the user cancels, use Sparkle's skip/cancel path; do not dismiss and leave install-on-quit armed.
 - After explicit install confirmation, reserve app operations, pause playback, and block new work before Sparkle terminates, replaces, and relaunches the App. If the user quits with an unconfirmed prepared update, cancel the update before completing the quit.
 - Published V1.2.1 and earlier lack Sparkle. They cannot receive this feed; install the first updater-enabled version manually. Later versions can use the Sparkle flow.
+- V1.3.0 is the first release with the updater. Its Finder/App name is the stable `Aquarius.app` / `Aquarius`; the complete semantic version and independent four-digit Build are stored separately in bundle metadata.
 - Sparkle EdDSA signatures are separate from Developer ID code signing and do not establish Apple notarization or Gatekeeper trust. Report each status accurately.
 - The release App's code signature must pass `codesign --verify --deep --strict`. A valid ad-hoc signature is acceptable for this flow but does not establish Developer ID identity or notarization; the package and feed still require their independent Sparkle EdDSA signatures.
 
