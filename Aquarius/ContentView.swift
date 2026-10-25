@@ -969,11 +969,6 @@ struct ContentView: View {
             }
             .pickerStyle(.menu)
 
-            Text("应用于整个列表；修改后已有结果需重新提取。")
-                .font(.caption2)
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-
             if viewModel.showsTimecodeDiagnosticsDetails {
                 timecodeDiagnosticsDetails
             } else if let result = viewModel.result,
@@ -1039,14 +1034,8 @@ struct ContentView: View {
                         .foregroundStyle(.secondary)
                 }
             } else {
-                Text("等待 OCR 后显示检测结果")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                EmptyView()
             }
-
-            Text("自动仅推断 24/25/30；23.976 和 29.97 需手动指定。29.97 DF 请使用分号时间码。")
-                .font(.caption2)
-                .foregroundStyle(.secondary)
         }
     }
 
