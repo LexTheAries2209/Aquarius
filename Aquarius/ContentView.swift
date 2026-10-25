@@ -556,9 +556,8 @@ struct ContentView: View {
                 // The editor owns the full canvas, including the 1% outer band.
                 // Only the video is clipped, so edge handles remain visible.
                 ROIEditorOverlay(
-                    regions: viewModel.regions,
-                    selectedRegionID: viewModel.selectedRegionID,
-                    enabledFieldKinds: viewModel.enabledFieldKinds
+                    regions: viewModel.enabledRegions,
+                    selectedRegionID: viewModel.selectedRegionID
                 ) { normalizedRect in
                     viewModel.updateSelectedRegion(to: normalizedRect)
                 }
@@ -1319,6 +1318,11 @@ struct ProjectSettingsView: View {
                 Text(viewModel.timecodeBurnOutputMode.description)
                     .font(.caption)
                     .foregroundStyle(.secondary)
+
+                Text("烧录按钮仅在列表中每个素材都有有效起始时间码且没有识别或烧录任务时启用。源文件模式还要求已有可写 TMCD 轨道；复制模式可在缺少 TMCD 时重新封装。23.976、29.97 和 29.97 DF 当前暂不支持 TMCD 写回。")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
 
             Section("文件名改名") {
@@ -1670,7 +1674,6 @@ private struct PreviewDiagnosticOverlay: View {
 private struct ROIEditorOverlay: View {
     let regions: [OCRRegion]
     let selectedRegionID: String
-    let enabledFieldKinds: Set<OCRFieldKind>
     let onRectChanged: (CGRect) -> Void
 
     var body: some View {
@@ -1678,23 +1681,20 @@ private struct ROIEditorOverlay: View {
             ZStack(alignment: .topLeading) {
                 ForEach(regions) { region in
                     let rect = OCRSelectionGeometry.overlayRect(for: region.normalizedRect, in: proxy.size)
-                    let isEnabled = enabledFieldKinds.contains(region.kind)
-                    let isSelected = region.id == selectedRegionID && isEnabled
-                    let borderColor = isEnabled ? color(for: region.kind) : Color.white.opacity(0.35)
+                    let isSelected = region.id == selectedRegionID
 
                     RoundedRectangle(cornerRadius: 4)
-                        .fill(isEnabled ? color(for: region.kind).opacity(isSelected ? 0.035 : 0.012) : Color.clear)
+                        .fill(color(for: region.kind).opacity(isSelected ? 0.035 : 0.012))
                         .overlay {
                             RoundedRectangle(cornerRadius: 4)
                                 .strokeBorder(
-                                    borderColor,
-                                    style: StrokeStyle(lineWidth: isSelected ? 3 : 1.25, dash: isEnabled ? [] : [5, 4])
+                                    color(for: region.kind),
+                                    lineWidth: isSelected ? 3 : 1.25
                                 )
                         }
                         .frame(width: rect.width, height: rect.height)
                         .position(x: rect.midX, y: rect.midY)
                         .shadow(color: .black.opacity(isSelected ? 0.35 : 0.10), radius: 0, x: 0, y: 1)
-                        .opacity(isEnabled ? 1 : 0.45)
 
                     if isSelected {
                         selectedRegionLabel(region.kind.title, rect: rect, canvasSize: proxy.size)

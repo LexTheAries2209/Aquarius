@@ -32,6 +32,15 @@ struct QuickTimeTMCDBurnReport: Sendable {
 }
 
 enum QuickTimeTMCDWriter {
+    nonisolated static func burnCompatibilityIssue(for timecode: Timecode) -> String? {
+        do {
+            try validateWritableTimecode(timecode)
+            return nil
+        } catch {
+            return (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+        }
+    }
+
     nonisolated static func hasWritableTMCDTrack(in url: URL) -> Bool {
         do {
             let data = try Data(contentsOf: url, options: .mappedIfSafe)

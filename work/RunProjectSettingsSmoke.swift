@@ -45,6 +45,88 @@ struct RunProjectSettingsSmoke {
         try check(model.mediaItems.isEmpty && model.selectedMediaItemID == nil && model.player == nil,
                   "a new session must start with an empty media queue and no player")
         try check(model.enabledFieldKinds == Set(OCRFieldKind.allCases), "a fresh session must enable all OCR fields")
+        try check(model.timecodeBurnUnavailableReason == "请先导入视频",
+                  "burn availability must explain why an empty list cannot burn")
+        try check(model.timecodeBurnButtonHelp == "当前不可烧录：请先导入视频",
+                  "burn button help must expose the actionable empty-list reason")
+        try check(QuickTimeTMCDWriter.burnCompatibilityIssue(
+            for: Timecode(hours: 1, minutes: 2, seconds: 3, frames: 4, fps: 25)
+        ) == nil, "integer non-drop-frame timecode must be burn-compatible")
+        try check(QuickTimeTMCDWriter.burnCompatibilityIssue(
+            for: Timecode(
+                hours: 1, minutes: 2, seconds: 3, frames: 4,
+                fps: 24, playbackFrameRate: 23.976
+            )
+        ) != nil, "23.976 timecode must expose its current TMCD limitation")
+        try check(QuickTimeTMCDWriter.burnCompatibilityIssue(
+            for: Timecode(
+                hours: 1, minutes: 2, seconds: 3, frames: 4,
+                fps: 30, playbackFrameRate: 29.97, isDropFrame: true
+            )
+        ) != nil, "29.97 DF timecode must expose its current TMCD limitation")
+        model.isTimecodeBurnOptionEnabled = true
+        model.timecodeBurnOutputMode = .copyToFolder
+        let recognizedTimecode = Timecode(hours: 1, minutes: 2, seconds: 3, frames: 4, fps: 25)
+        let riskyDiagnostics = TimecodeDiagnostics(
+            setting: .automatic,
+            videoFrameRate: 25,
+            sourceTimecodeFrameRate: 25,
+            validSampleCount: 1,
+            invalidSampleCount: 0,
+            maxDeviationFrames: nil,
+            driftFramesPerMinute: nil,
+            isFrameRateCandidateUnique: false,
+            status: .highRisk,
+            notes: ["diagnostic-only risk"]
+        )
+        let recognizedResult = ClipOCRResult(
+            videoName: "recognized.mov",
+            fps: 25,
+            videoFrameRate: 25,
+            sourceTimecodeFrameRateSetting: .automatic,
+            duration: 1,
+            clipName: nil,
+            roll: nil,
+            startTimecode: recognizedTimecode,
+            confidence: 0.3,
+            samples: [],
+            timecodeDiagnostics: riskyDiagnostics,
+            notes: []
+        )
+        let recognizedItem = MediaQueueItem(
+            url: URL(fileURLWithPath: "/tmp/recognized.mov"),
+            result: recognizedResult
+        )
+        model.mediaItems = [recognizedItem]
+        try check(model.canBurnTimecodeIntoTMCD,
+                  "a parsed timecode must remain burnable even when diagnostics are high risk")
+        model.mediaItems.append(MediaQueueItem(url: URL(fileURLWithPath: "/tmp/missing-timecode.mov")))
+        try check(!model.canBurnTimecodeIntoTMCD
+                  && model.timecodeBurnUnavailableReason?.contains("还有 1 个素材") == true,
+                  "a batch burn must explain when any listed media item lacks a timecode")
+        model.mediaItems = [MediaQueueItem(
+            url: URL(fileURLWithPath: "/tmp/non-integer-rate.mov"),
+            result: ClipOCRResult(
+                videoName: "non-integer-rate.mov",
+                fps: 24,
+                videoFrameRate: 23.976,
+                sourceTimecodeFrameRateSetting: .automatic,
+                duration: 1,
+                clipName: nil,
+                roll: nil,
+                startTimecode: Timecode(
+                    hours: 1, minutes: 2, seconds: 3, frames: 4,
+                    fps: 24, playbackFrameRate: 23.976
+                ),
+                confidence: 0.9,
+                samples: [],
+                timecodeDiagnostics: nil,
+                notes: []
+            )
+        )]
+        try check(!model.canBurnTimecodeIntoTMCD
+                  && model.timecodeBurnUnavailableReason?.contains("23.976/29.97") == true,
+                  "unsupported TMCD frame rates must expose the writer limitation")
         print("Project settings passed: empty startup, default visibility, legacy settings and visibility persistence")
         try verifySamplePanelSizing()
         try verifyStartupFields(in: testRoot, legacySettings: legacy)

@@ -313,10 +313,29 @@ final class AnalysisViewModel: ObservableObject {
         isTimecodeBurnOptionEnabled && isFileRenameOptionEnabled
     }
 
+    var timecodeBurnUnavailableReason: String? {
+        if mediaItems.isEmpty {
+            return "请先导入视频"
+        }
+        if isAnalyzing {
+            return "当前有识别或烧录任务正在进行"
+        }
+
+        let jobs = timecodeBurnJobs
+        if jobs.count != mediaItems.count {
+            let missingCount = max(0, mediaItems.count - jobs.count)
+            return "还有 \(missingCount) 个素材没有有效起始时间码；结果过期或手动 TC 格式无效也会被视为缺失"
+        }
+
+        if let issue = jobs.compactMap({ QuickTimeTMCDWriter.burnCompatibilityIssue(for: $0.timecode) }).first {
+            return issue
+        }
+
+        return nil
+    }
+
     var canBurnTimecodeIntoTMCD: Bool {
-        !mediaItems.isEmpty
-            && !isAnalyzing
-            && timecodeBurnJobs.count == mediaItems.count
+        timecodeBurnUnavailableReason == nil
     }
 
     var canCopyFilesWithMetadataNames: Bool {
@@ -330,11 +349,15 @@ final class AnalysisViewModel: ObservableObject {
     }
 
     var timecodeBurnButtonHelp: String {
+        if let reason = timecodeBurnUnavailableReason {
+            return "当前不可烧录：\(reason)"
+        }
+
         switch timecodeBurnOutputMode {
         case .sourceFile:
-            "将有效起始时间码写入源文件已有 TMCD 轨道"
+            return "将有效起始时间码写入源文件已有 TMCD 轨道；源文件必须包含可写 TMCD"
         case .copyToFolder:
-            "复制到新文件夹后写入 TMCD；源文件不变"
+            return "复制到新文件夹后写入 TMCD；源文件不变，可在缺少 TMCD 时重新封装"
         }
     }
 
@@ -1228,6 +1251,11 @@ final class AnalysisViewModel: ObservableObject {
             return
         }
         guard canBurnAndRenameFiles else {
+            if let reason = timecodeBurnUnavailableReason {
+                errorMessage = reason
+                statusMessage = "无法烧录并改名：\(reason)"
+                return
+            }
             let missingTimecodeCount = mediaItems.filter { exportMetadata(for: $0).startTimecode == nil }.count
             let missingNameCount = mediaItems.filter { exportMetadata(for: $0).clipName == nil }.count
             errorMessage = "列表元数据不完整：\(missingTimecodeCount) 个缺少时间码，\(missingNameCount) 个缺少文件名"
@@ -1259,6 +1287,12 @@ final class AnalysisViewModel: ObservableObject {
             let missingCount = max(0, mediaItems.count - jobs.count)
             errorMessage = "还有 \(missingCount) 个素材没有有效起始时间码，请先提取或手动输入"
             statusMessage = "无法烧录：列表时间码不完整"
+            return
+        }
+
+        if let issue = jobs.compactMap({ QuickTimeTMCDWriter.burnCompatibilityIssue(for: $0.timecode) }).first {
+            errorMessage = issue
+            statusMessage = "无法烧录：\(issue)"
             return
         }
 
@@ -1297,6 +1331,11 @@ final class AnalysisViewModel: ObservableObject {
             let missingCount = max(0, mediaItems.count - jobs.count)
             errorMessage = "还有 \(missingCount) 个素材没有有效起始时间码，请先提取或手动输入"
             statusMessage = "无法烧录：列表时间码不完整"
+            return
+        }
+        if let issue = jobs.compactMap({ QuickTimeTMCDWriter.burnCompatibilityIssue(for: $0.timecode) }).first {
+            errorMessage = issue
+            statusMessage = "无法烧录：\(issue)"
             return
         }
         guard let folderURL = promptForOutputFolder(title: "选择时间码烧录输出文件夹", prompt: "复制并烧录") else {
