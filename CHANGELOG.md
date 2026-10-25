@@ -1,13 +1,13 @@
 # Aquarius Release Log
 
-## V1.2.0 - 2026-10-25
+## V1.2.1 - 2026-10-25
 
-[GitHub Release](https://github.com/LexTheAries2209/Aquarius/releases/tag/v1.2.0) · [Release notes](docs/releases/v1.2.0.md)
+[GitHub Release](https://github.com/LexTheAries2209/Aquarius/releases/tag/v1.2.1) · [Release notes](docs/releases/v1.2.1.md)
 
 - 中文：改进时间码识别和逐帧复核体验，加入可调 OCR 样本区及更多项目设置，最低系统版本提升至 macOS 14.0。
 - English: Improved timecode recognition and frame-by-frame review, added a resizable OCR sample area and Project Settings, and raised the minimum macOS version to 14.0.
 
-## V1.1.1 - 2026-07-29
+## V1.1.1 - 2026-07-28
 
 [GitHub Release](https://github.com/LexTheAries2209/Aquarius/releases/tag/v1.1.1) · [Release notes](docs/releases/v1.1.1.md)
 
