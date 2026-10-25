@@ -3,6 +3,10 @@
 import AppKit
 import SwiftUI
 
+nonisolated private struct EventMonitorToken: @unchecked Sendable {
+    let value: Any
+}
+
 struct FrameStepKeyHandler: NSViewRepresentable {
     let isEnabled: () -> Bool
     let onStep: (Int) -> Void
@@ -27,7 +31,7 @@ final class FrameStepKeyView: NSView {
             if oldValue != playbackID { stopHeldKey() }
         }
     }
-    private var keyMonitor: Any?
+    nonisolated(unsafe) private var keyMonitor: EventMonitorToken?
     private var heldKeyCode: UInt16?
     private var holdTask: Task<Void, Never>?
 
@@ -36,7 +40,7 @@ final class FrameStepKeyView: NSView {
         stopHeldKey()
         NotificationCenter.default.removeObserver(self)
         if let keyMonitor {
-            NSEvent.removeMonitor(keyMonitor)
+            NSEvent.removeMonitor(keyMonitor.value)
             self.keyMonitor = nil
         }
         guard let window else { return }
@@ -47,9 +51,9 @@ final class FrameStepKeyView: NSView {
             self, selector: #selector(stopForNotification(_:)),
             name: NSApplication.didResignActiveNotification, object: NSApp
         )
-        keyMonitor = NSEvent.addLocalMonitorForEvents(
-            matching: [.keyDown, .keyUp, .flagsChanged, .leftMouseDown, .rightMouseDown]
-        ) { [weak self] event in
+        if let token = NSEvent.addLocalMonitorForEvents(
+            matching: [.keyDown, .keyUp, .flagsChanged, .leftMouseDown, .rightMouseDown],
+            handler: { [weak self] event in
             let handled = MainActor.assumeIsolated {
                 guard let self else { return false }
                 switch event.type {
@@ -67,13 +71,15 @@ final class FrameStepKeyView: NSView {
                 return false
             }
             return handled ? nil : event
+        }) {
+            keyMonitor = EventMonitorToken(value: token)
         }
     }
 
     deinit {
         holdTask?.cancel()
         NotificationCenter.default.removeObserver(self)
-        if let keyMonitor { NSEvent.removeMonitor(keyMonitor) }
+        if let keyMonitor { NSEvent.removeMonitor(keyMonitor.value) }
     }
 
     func handleKeyDown(_ event: NSEvent) -> NSEvent? {

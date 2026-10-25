@@ -3,6 +3,10 @@
 import AppKit
 import SwiftUI
 
+nonisolated private struct EventMonitorToken: @unchecked Sendable {
+    let value: Any
+}
+
 struct ProjectSettingsKeyHandler: NSViewRepresentable {
     let onOpen: () -> Void
 
@@ -17,26 +21,28 @@ struct ProjectSettingsKeyHandler: NSViewRepresentable {
 
 final class ProjectSettingsKeyView: NSView {
     var onOpen: () -> Void = {}
-    private var keyMonitor: Any?
+    nonisolated(unsafe) private var keyMonitor: EventMonitorToken?
 
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
         if let keyMonitor {
-            NSEvent.removeMonitor(keyMonitor)
+            NSEvent.removeMonitor(keyMonitor.value)
             self.keyMonitor = nil
         }
         guard window != nil else { return }
-        keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+        if let token = NSEvent.addLocalMonitorForEvents(matching: .keyDown, handler: { [weak self] event in
             let handled = MainActor.assumeIsolated {
                 guard let self else { return false }
                 return self.handleKeyDown(event) == nil
             }
             return handled ? nil : event
+        }) {
+            keyMonitor = EventMonitorToken(value: token)
         }
     }
 
     deinit {
-        if let keyMonitor { NSEvent.removeMonitor(keyMonitor) }
+        if let keyMonitor { NSEvent.removeMonitor(keyMonitor.value) }
     }
 
     func handleKeyDown(_ event: NSEvent) -> NSEvent? {
