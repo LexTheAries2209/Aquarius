@@ -98,6 +98,9 @@ final class AnalysisViewModel: ObservableObject {
     @Published var showsSampleLoader = true {
         didSet { persistProjectOutputSettings() }
     }
+    @Published var showsMetadataEditor = true {
+        didSet { persistProjectOutputSettings() }
+    }
     @Published var startupEnabledFieldKinds = Set(OCRFieldKind.allCases) {
         didSet { persistProjectOutputSettings() }
     }
@@ -2602,6 +2605,7 @@ final class AnalysisViewModel: ObservableObject {
         exportsCompanionCSVForRenamedFiles = settings.exportsCompanionCSVForRenamedFiles
         showsTimecodeDiagnosticsDetails = settings.showsTimecodeDiagnosticsDetails
         showsSampleLoader = settings.showsSampleLoader
+        showsMetadataEditor = settings.showsMetadataEditor
         startupEnabledFieldKinds = settings.startupEnabledFieldKinds
         enabledFieldKinds = startupEnabledFieldKinds
         renameOutputPrefix = settings.renamePrefix
@@ -2629,6 +2633,7 @@ final class AnalysisViewModel: ObservableObject {
                 exportsCompanionCSVForRenamedFiles: exportsCompanionCSVForRenamedFiles,
                 showsTimecodeDiagnosticsDetails: showsTimecodeDiagnosticsDetails,
                 showsSampleLoader: showsSampleLoader,
+                showsMetadataEditor: showsMetadataEditor,
                 startupEnabledFieldKinds: startupEnabledFieldKinds,
                 renamePrefix: renameOutputPrefix,
                 renameSuffix: renameOutputSuffix

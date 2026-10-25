@@ -650,9 +650,11 @@ struct ContentView: View {
 
             Divider()
 
-            metadataEditor
+            if viewModel.showsMetadataEditor {
+                metadataEditor
 
-            Divider()
+                Divider()
+            }
 
             metadataComparison
 
@@ -1275,6 +1277,7 @@ struct ProjectSettingsView: View {
         Form {
             Section("界面") {
                 Toggle("显示载入样片按钮", isOn: $viewModel.showsSampleLoader)
+                Toggle("显示元数据编辑界面", isOn: $viewModel.showsMetadataEditor)
             }
 
             Section("启动时启用的识别字段") {

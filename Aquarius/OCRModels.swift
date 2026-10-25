@@ -485,6 +485,7 @@ struct ProjectOutputSettings: Codable, Equatable, Sendable {
     var exportsCompanionCSVForRenamedFiles: Bool
     var showsTimecodeDiagnosticsDetails: Bool
     var showsSampleLoader: Bool
+    var showsMetadataEditor: Bool
     var startupEnabledFieldKinds: Set<OCRFieldKind>
     var renamePrefix: String
     var renameSuffix: String
@@ -496,6 +497,7 @@ struct ProjectOutputSettings: Codable, Equatable, Sendable {
         exportsCompanionCSVForRenamedFiles: Bool = false,
         showsTimecodeDiagnosticsDetails: Bool = false,
         showsSampleLoader: Bool = true,
+        showsMetadataEditor: Bool = true,
         startupEnabledFieldKinds: Set<OCRFieldKind> = Set(OCRFieldKind.allCases),
         renamePrefix: String = "",
         renameSuffix: String = ""
@@ -506,6 +508,7 @@ struct ProjectOutputSettings: Codable, Equatable, Sendable {
         self.exportsCompanionCSVForRenamedFiles = exportsCompanionCSVForRenamedFiles
         self.showsTimecodeDiagnosticsDetails = showsTimecodeDiagnosticsDetails
         self.showsSampleLoader = showsSampleLoader
+        self.showsMetadataEditor = showsMetadataEditor
         self.startupEnabledFieldKinds = startupEnabledFieldKinds
         self.renamePrefix = renamePrefix
         self.renameSuffix = renameSuffix
@@ -518,6 +521,7 @@ struct ProjectOutputSettings: Codable, Equatable, Sendable {
         case exportsCompanionCSVForRenamedFiles
         case showsTimecodeDiagnosticsDetails
         case showsSampleLoader
+        case showsMetadataEditor
         case startupEnabledFieldKinds
         case renamePrefix
         case renameSuffix
@@ -532,6 +536,7 @@ struct ProjectOutputSettings: Codable, Equatable, Sendable {
         showsTimecodeDiagnosticsDetails = try container.decodeIfPresent(Bool.self, forKey: .showsTimecodeDiagnosticsDetails) ?? false
         // Existing settings files keep the sample menu available after upgrading.
         showsSampleLoader = try container.decodeIfPresent(Bool.self, forKey: .showsSampleLoader) ?? true
+        showsMetadataEditor = try container.decodeIfPresent(Bool.self, forKey: .showsMetadataEditor) ?? true
         startupEnabledFieldKinds = try container.decodeIfPresent(Set<OCRFieldKind>.self, forKey: .startupEnabledFieldKinds)
             ?? Set(OCRFieldKind.allCases)
         renamePrefix = try container.decodeIfPresent(String.self, forKey: .renamePrefix) ?? ""

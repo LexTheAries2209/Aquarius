@@ -10,6 +10,7 @@ struct RunProjectSettingsSmoke {
         let decoder = JSONDecoder()
         let defaults = ProjectOutputSettings()
         try check(defaults.showsSampleLoader, "sample menu must be visible by default")
+        try check(defaults.showsMetadataEditor, "metadata editor must be visible by default")
         try check(defaults.startupEnabledFieldKinds == Set(OCRFieldKind.allCases),
                   "all OCR fields must be enabled until startup defaults are configured")
 
@@ -19,6 +20,7 @@ struct RunProjectSettingsSmoke {
         """.utf8)
         let migrated = try decoder.decode(ProjectOutputSettings.self, from: legacy)
         try check(migrated.showsSampleLoader, "old settings must default to a visible sample menu")
+        try check(migrated.showsMetadataEditor, "old settings must default to a visible metadata editor")
         try check(migrated.startupEnabledFieldKinds == Set(OCRFieldKind.allCases),
                   "old settings must continue to enable all OCR fields")
         try check(migrated.isTimecodeBurnEnabled && migrated.isFileRenameEnabled
@@ -30,6 +32,13 @@ struct RunProjectSettingsSmoke {
             let data = try JSONEncoder().encode(settings)
             let restored = try decoder.decode(ProjectOutputSettings.self, from: data)
             try check(restored == settings, "both sample-menu states must survive a settings round trip")
+        }
+        for visible in [false, true] {
+            var settings = migrated
+            settings.showsMetadataEditor = visible
+            let data = try JSONEncoder().encode(settings)
+            let restored = try decoder.decode(ProjectOutputSettings.self, from: data)
+            try check(restored == settings, "both metadata editor visibility states must survive a settings round trip")
         }
         let testRoot = URL(fileURLWithPath: CommandLine.arguments[1], isDirectory: true)
         let model = AnalysisViewModel(applicationSupportURL: testRoot.appendingPathComponent("empty"))
@@ -93,7 +102,11 @@ struct RunProjectSettingsSmoke {
             let wanted = Set(OCRFieldKind.allCases.enumerated().compactMap { index, kind in
                 mask & (1 << index) != 0 ? kind : nil
             })
-            let settings = ProjectOutputSettings(showsSampleLoader: false, startupEnabledFieldKinds: wanted)
+            let settings = ProjectOutputSettings(
+                showsSampleLoader: false,
+                showsMetadataEditor: false,
+                startupEnabledFieldKinds: wanted
+            )
             try encoder.encode(settings).write(to: settingsURL)
             let model = AnalysisViewModel(applicationSupportURL: supportURL)
             try check(model.startupEnabledFieldKinds == wanted && model.enabledFieldKinds == wanted,
@@ -111,7 +124,8 @@ struct RunProjectSettingsSmoke {
             let relaunched = AnalysisViewModel(applicationSupportURL: supportURL)
             try check(relaunched.enabledFieldKinds == wanted && relaunched.startupEnabledFieldKinds == wanted,
                       "saving another preference must not persist temporary session switches")
-            try check(!relaunched.showsSampleLoader && relaunched.renameOutputPrefix == "SESSION_",
+            try check(!relaunched.showsSampleLoader && !relaunched.showsMetadataEditor
+                      && relaunched.renameOutputPrefix == "SESSION_",
                       "saving startup fields must preserve other preferences")
         }
 
