@@ -15,6 +15,7 @@ struct ContentView: View {
     @ObservedObject var viewModel: AnalysisViewModel
     @State private var isDropTargeted = false
     @State private var samplePanelDragStartHeight: CGFloat?
+    @State private var transientSamplePanelHeight: CGFloat?
     @State private var isSamplePanelCursorPushed = false
     @SceneStorage("aquarius.ocrSamplePanelHeight") private var savedSamplePanelHeight = 300.0
     @Environment(\.openSettings) private var openSettings
@@ -309,6 +310,8 @@ struct ContentView: View {
 
     private var aquariusDock: some View {
         VStack(alignment: .leading, spacing: 8) {
+            Divider()
+
             Link(destination: aquariusGitHubURL) {
                 VStack(alignment: .leading, spacing: 3) {
                     Label("打开 Aquarius GitHub 仓库", systemImage: "safari")
@@ -362,7 +365,7 @@ struct ContentView: View {
                 columnHeight: proxy.size.height
             )
             let sampleLogHeight = OCRSamplePanelSizing.clampedHeight(
-                CGFloat(savedSamplePanelHeight),
+                transientSamplePanelHeight ?? CGFloat(savedSamplePanelHeight),
                 maximumHeight: maximumSampleHeight
             )
 
@@ -372,7 +375,6 @@ struct ContentView: View {
                         minHeight: OCRSamplePanelSizing.minimumVideoWorkspaceHeight,
                         maxHeight: .infinity
                     )
-                Divider()
                 samplePanelDivider(
                     height: sampleLogHeight,
                     maximumHeight: maximumSampleHeight
@@ -383,6 +385,10 @@ struct ContentView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .onDisappear {
                 samplePanelDragStartHeight = nil
+                if let transientSamplePanelHeight {
+                    savedSamplePanelHeight = Double(transientSamplePanelHeight)
+                    self.transientSamplePanelHeight = nil
+                }
                 if isSamplePanelCursorPushed {
                     NSCursor.pop()
                     isSamplePanelCursorPushed = false
@@ -392,14 +398,12 @@ struct ContentView: View {
     }
 
     private func samplePanelDivider(height: CGFloat, maximumHeight: CGFloat) -> some View {
-        VStack(spacing: 0) {
+        ZStack {
+            Rectangle()
+                .fill(Color.clear)
             Rectangle()
                 .fill(Color(nsColor: .separatorColor))
                 .frame(height: 1)
-            Capsule()
-                .fill(Color.secondary.opacity(0.65))
-                .frame(width: 36, height: 3)
-                .padding(.vertical, 3)
         }
         .frame(maxWidth: .infinity)
         .frame(height: OCRSamplePanelSizing.dividerHeight)
@@ -418,14 +422,17 @@ struct ContentView: View {
                 .onChanged { value in
                     let startingHeight = samplePanelDragStartHeight ?? height
                     samplePanelDragStartHeight = startingHeight
-                    savedSamplePanelHeight = Double(
-                        OCRSamplePanelSizing.clampedHeight(
-                            startingHeight - value.translation.height,
-                            maximumHeight: maximumHeight
-                        )
+                    // Keep pointer updates local; persist the final size when dragging ends.
+                    transientSamplePanelHeight = OCRSamplePanelSizing.clampedHeight(
+                        startingHeight - value.translation.height,
+                        maximumHeight: maximumHeight
                     )
                 }
                 .onEnded { _ in
+                    if let transientSamplePanelHeight {
+                        savedSamplePanelHeight = Double(transientSamplePanelHeight)
+                        self.transientSamplePanelHeight = nil
+                    }
                     samplePanelDragStartHeight = nil
                 }
         )
@@ -1040,32 +1047,36 @@ struct ContentView: View {
     }
 
     private var fieldToggles: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text("识别字段")
-                .font(.headline)
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 8) {
+                Text("识别字段")
+                    .font(.headline)
+                    .fixedSize()
 
-            HStack(spacing: 6) {
-                ForEach(OCRFieldKind.allCases) { kind in
-                    Toggle(
-                        isOn: Binding(
-                            get: { viewModel.isFieldEnabled(kind) },
-                            set: { isEnabled in
-                                performAfterViewUpdate {
-                                    viewModel.setField(kind, isEnabled: isEnabled)
+                HStack(spacing: 6) {
+                    ForEach(OCRFieldKind.allCases) { kind in
+                        Toggle(
+                            isOn: Binding(
+                                get: { viewModel.isFieldEnabled(kind) },
+                                set: { isEnabled in
+                                    performAfterViewUpdate {
+                                        viewModel.setField(kind, isEnabled: isEnabled)
+                                    }
                                 }
-                            }
-                        )
-                    ) {
-                        Label(kind.title, systemImage: icon(for: kind))
-                            .lineLimit(1)
+                            )
+                        ) {
+                            Label(kind.title, systemImage: icon(for: kind))
+                                .lineLimit(1)
+                        }
+                        .toggleStyle(.button)
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
+                        .frame(maxWidth: .infinity)
+                        .help("\(kind.title)识别")
+                        .accessibilityIdentifier("field-toggle-\(kind.rawValue)")
                     }
-                    .toggleStyle(.button)
-                    .buttonStyle(.bordered)
-                    .controlSize(.small)
-                    .frame(maxWidth: .infinity)
-                    .help("\(kind.title)识别")
-                    .accessibilityIdentifier("field-toggle-\(kind.rawValue)")
                 }
+                .frame(maxWidth: .infinity)
             }
 
             if !viewModel.hasEnabledFields {
