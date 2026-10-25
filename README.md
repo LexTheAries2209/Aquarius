@@ -28,6 +28,8 @@ Aquarius 不是剪辑软件，也不是完整的媒体资产管理系统。它�
 
 V1.2.1 的中文发布说明见 [docs/releases/v1.2.1.zh-CN.md](docs/releases/v1.2.1.zh-CN.md)。
 
+从后续包含更新器的版本开始，可在“设置 > 更新”中手动检查或选择启动时检查。更新清单和安装包都由 Sparkle EdDSA 签名验证；V1.2.1 及更早版本没有内置更新器，需要先从 GitHub Releases 手动升级一次。更新器启用发布后的说明见 [更新发布规则](docs/sparkle-updates.md)。
+
 典型用途：
 
 - QTake 录制文件只有画面烧录信息，缺少可用的 QuickTime timecode track。
@@ -43,6 +45,7 @@ V1.2.1 的中文发布说明见 [docs/releases/v1.2.1.zh-CN.md](docs/releases/v1
 - 导出 DaVinci Resolve CSV，以及 Premiere Pro、Final Cut Pro 和 Avid Media Composer 可用的元数据文件。
 - 可选将起始时间码写入 QuickTime TMCD，或复制素材并按指定名称整理；也可为改名后的素材生成配套 CSV。
 - 可选使用 MediaInfo CLI 查看更完整的媒体文件信息。
+- 后续带有更新器的版本可从“设置 > 更新”检查 Sparkle 签名更新。
 
 > 验证状态：DaVinci Resolve CSV 是当前已验证的主工作流；Premiere Pro XML、Final Cut Pro 7 XML、Final Cut Pro XML / FCPXML 和 Avid ALE 目前只通过本地结构/格式烟雾测试，尚未在对应工作软件中完成实际导入验证，等待更多项目测试和反馈。
 
@@ -50,7 +53,7 @@ V1.2.1 的中文发布说明见 [docs/releases/v1.2.1.zh-CN.md](docs/releases/v1
 
 - 当前源码与后续发布版：Apple silicon（M 系列芯片），macOS `14.0` 或更新版本；使用发布版不需要 Xcode。
 - 历史 V1.0.3 下载包仍是同时支持 Apple silicon 和 Intel 的 universal 构建；这一兼容范围不代表后续版本。
-- V1.2.1 未签名且未经公证；首次打开时 macOS 可能要求在 Finder 中右键选择“打开”或在“隐私与安全性”中确认。
+- 已发布的 V1.2.1 未签名且未经公证；首次打开时 macOS 可能要求在 Finder 中右键选择“打开”或在“隐私与安全性”中确认。后续更新版本使用 Sparkle EdDSA 签名验证清单和安装包；该更新签名不等同于 Developer ID 签名或 Apple 公证。
 - 从源码构建：需要 Xcode，当前工程使用 SwiftUI / AVFoundation / CoreImage / CoreMedia / Vision。
 - 当前源码工程配置：
   - Swift `5.0`
@@ -153,7 +156,7 @@ Avid ALE 导出会生成 tab 分隔的三段式文本：`Heading`、`Column`、`
 - 29.97 DF 支持手动解析和 CSV 导出，要求使用分号格式；QuickTime TMCD 写回尚未启用。
 - 除 DaVinci Resolve CSV 外，新增 XML / ALE 元数据导出尚未在对应工作软件中完成实际导入验证。
 - 直接写入源文件仅适用于已有可写 QuickTime TMCD 轨道的 MOV / QuickTime 文件。
-- 工具在本机运行，不需要联网。
+- 媒体识别和处理在本机运行；检查 Sparkle 更新时需要联网。
 - OCR 基准素材的准备和标注要求见 [docs/OCR_BENCHMARK_SAMPLE_CONTRACT.md](docs/OCR_BENCHMARK_SAMPLE_CONTRACT.md)。
 
 ---
@@ -172,6 +175,8 @@ Aquarius is not an editor or a full media asset manager. It focuses on one job: 
 
 English release notes for V1.2.1 are available at [docs/releases/v1.2.1.en.md](docs/releases/v1.2.1.en.md).
 
+Starting with a subsequent release that includes the updater, users can check manually or enable launch checks in Settings > Updates. Sparkle verifies EdDSA signatures on both the appcast and downloaded archive. V1.2.1 and earlier do not include the updater, so the first upgrade must be installed manually from GitHub Releases. See the [update release policy](docs/sparkle-updates.md).
+
 Common use cases:
 
 - QTake or monitor-recorded files show burned-in metadata but do not carry usable QuickTime timecode.
@@ -187,6 +192,7 @@ Common use cases:
 - Exports DaVinci Resolve CSV and metadata files for Premiere Pro, Final Cut Pro, and Avid Media Composer.
 - Optionally writes start timecode to QuickTime TMCD, or copies and renames media with a companion CSV.
 - Optionally uses MediaInfo CLI to show more detailed media-file information.
+- Later updater-enabled releases can check for Sparkle-signed updates in Settings > Updates.
 
 > Verification status: DaVinci Resolve CSV is the currently verified primary workflow. Premiere Pro XML, Final Cut Pro 7 XML, Final Cut Pro XML / FCPXML, and Avid ALE have only passed local structure/format smoke tests; they have not yet been verified by importing into the corresponding production apps and need more field testing and feedback.
 
@@ -194,7 +200,7 @@ Common use cases:
 
 - Current source and future releases: Apple silicon (M-series), macOS `14.0` or later; Xcode is not required for release builds.
 - The historical V1.0.3 download remains a universal Apple silicon and Intel build; that compatibility does not apply to future releases.
-- V1.2.1 is unsigned and not notarized. macOS may require Finder > Open or approval in Privacy & Security on first launch.
+- The published V1.2.1 build is unsigned and not notarized. macOS may require Finder > Open or approval in Privacy & Security on first launch. Later updater-enabled builds verify Sparkle EdDSA signatures on feeds and archives; this is separate from Developer ID signing and Apple notarization.
 - Source build: Xcode with SwiftUI, AVFoundation, CoreImage, CoreMedia, and Vision support.
 - Current source project settings:
   - Swift `5.0`
@@ -295,7 +301,7 @@ The code may still open other containers through AVFoundation, but those formats
 - 29.97 DF is supported for manual parsing and CSV export with semicolon format; QuickTime TMCD writeback is not enabled yet.
 - Except for DaVinci Resolve CSV, the new XML / ALE metadata exports have not yet been verified by importing them into their corresponding production apps.
 - Direct source-file TMCD writing only supports MOV / QuickTime files with an existing writable TMCD track.
-- Processing is local and does not require network access.
+- Media recognition and processing run locally; checking for Sparkle updates requires an internet connection.
 
 ---
 
@@ -312,12 +318,16 @@ Aquarius source code is licensed under the GNU General Public License v3.0 only 
 
 Aquarius 源代码使用 GNU General Public License v3.0 only (`GPL-3.0-only`) 授权。使用、修改和分发本项目源代码时，请遵守 [LICENSE](LICENSE) 中的条款。
 
+The app bundles Sparkle 2.10.0 under its upstream license; see [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) and [the complete Sparkle license](Aquarius/Resources/Sparkle-LICENSE.txt).
+
+App 内置 Sparkle 2.10.0，并遵循其上游许可证；详见 [第三方声明](THIRD_PARTY_NOTICES.md) 和 [Sparkle 完整许可证](Aquarius/Resources/Sparkle-LICENSE.txt)。
+
 App icons, branding assets, and bundled sample videos are not covered by the GPLv3 source-code license unless explicitly stated otherwise.
 
 软件图标、品牌视觉资源以及内置样片视频不属于 GPLv3 源代码授权范围，除非另有明确说明。
 
 ## Version Naming / 版本命名
 
-The public Display Name uses a three-part version label composed from Xcode Version and Build. V1.2.1 uses `Version = 1.2` and `Build = 1`, producing `Aquarius V1.2.1`.
+V1.2.1 retains its historical Xcode `Version = 1.2`, `Build = 1` metadata. New releases use a complete semantic `MARKETING_VERSION` (for example, `1.2.2`) and a separate globally increasing four-digit `CURRENT_PROJECT_VERSION`; read [docs/versioning.md](docs/versioning.md) and [Configuration/ReleaseBuilds.json](Configuration/ReleaseBuilds.json) before preparing a release.
 
-公开显示名使用由 Xcode Version 和 Build 组成的三段式版本名。V1.2.1 使用 `Version = 1.2`、`Build = 1`，显示名为 `Aquarius V1.2.1`。
+V1.2.1 保留历史 Xcode 元数据 `Version = 1.2`、`Build = 1`。后续发布使用完整语义版本号 `MARKETING_VERSION`（例如 `1.2.2`），并使用独立、全局递增的四位 `CURRENT_PROJECT_VERSION`；准备发布前请阅读 [docs/versioning.md](docs/versioning.md) 和 [Configuration/ReleaseBuilds.json](Configuration/ReleaseBuilds.json)。

@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 1,
+  "historicalBaseline": {
+    "verifiedOn": "2026-10-25",
+    "repository": "LexTheAries2209/Aquarius",
+    "publishedReleaseCount": 5,
+    "lastPublishedTag": "v1.2.1",
+    "tagsOldestFirst": [
+      "v1.0.1",
+      "v1.0.2",
+      "v1.0.3",
+      "v1.1.1",
+      "v1.2.1"
+    ],
+    "nextAvailableBuild": "0006"
+  },
+  "allocations": []
+}

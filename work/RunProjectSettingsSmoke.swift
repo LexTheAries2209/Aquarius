@@ -7,6 +7,7 @@ import Foundation
 struct RunProjectSettingsSmoke {
     @MainActor
     static func main() throws {
+        try verifyAppUpdateSafety()
         let decoder = JSONDecoder()
         let defaults = ProjectOutputSettings()
         try check(defaults.showsSampleLoader, "sample menu must be visible by default")
@@ -303,6 +304,63 @@ struct RunProjectSettingsSmoke {
         NSApp.sendEvent(event("`", code: 50))
         try check(openedCount == 7, "detaching the bridge must remove its monitor")
         print("Settings shortcuts passed: four aliases, Shift, physical key, repeat suppression, editing, focus, sheets and monitor lifecycle")
+    }
+
+    @MainActor
+    private static func verifyAppUpdateSafety() throws {
+        let publicKey = Data(repeating: 0, count: 32).base64EncodedString()
+        let validInfo: [String: Any] = [
+            "SUFeedURL": "https://updates.example.test/appcast.xml",
+            "SUPublicEDKey": publicKey,
+            "SURequireSignedFeed": true,
+            "SUVerifyUpdateBeforeExtraction": true
+        ]
+        let configuration = try AppUpdateConfiguration(info: validInfo)
+        try check(configuration.feedURL.scheme == "https", "signed update feeds must require HTTPS")
+        try check(configuration.publicKey == publicKey, "the configured EdDSA public key must be retained")
+
+        var unsignedFeedInfo = validInfo
+        unsignedFeedInfo["SURequireSignedFeed"] = false
+        try check((try? AppUpdateConfiguration(info: unsignedFeedInfo)) == nil,
+                  "unsigned appcast feeds must be rejected")
+
+        var invalidKeyInfo = validInfo
+        invalidKeyInfo["SUPublicEDKey"] = Data(repeating: 1, count: 31).base64EncodedString()
+        try check((try? AppUpdateConfiguration(info: invalidKeyInfo)) == nil,
+                  "invalid EdDSA public keys must be rejected")
+
+        var isBusy = false
+        var reserveCount = 0
+        var releaseCount = 0
+        let safety = AppUpdateSafetyGate(
+            isBusy: { isBusy },
+            reserve: { reserveCount += 1 },
+            release: { releaseCount += 1 }
+        )
+        try safety.check()
+        try safety.beginInstallation()
+        let didReserveInstallation = safety.isReserved
+        try check(didReserveInstallation, "approved update installation must reserve the app")
+        try check(reserveCount == 1, "approved installation must reserve application work exactly once")
+        safety.endInstallation()
+        let didReleaseInstallation = !safety.isReserved
+        try check(didReleaseInstallation, "cancelled or completed installation must release the reservation")
+        try check(releaseCount == 1, "ending installation must release application work exactly once")
+        let model = AnalysisViewModel(applicationSupportURL: nil)
+        model.setAppUpdateReserved(true)
+        try check(model.isAnalyzing && model.isAppUpdateReserved,
+                  "an approved update must block new media operations")
+        model.setAppUpdateReserved(false)
+        try check(!model.isAnalyzing, "cancelling an update must restore media operations")
+        isBusy = true
+        var rejectedBusyInstallation = false
+        do {
+            try safety.check()
+        } catch {
+            rejectedBusyInstallation = true
+        }
+        try check(rejectedBusyInstallation, "updates must not start while media work is active")
+        print("Signed update configuration and installation safety passed")
     }
 
     private static func check(_ condition: @autoclosure () -> Bool, _ message: String) throws {

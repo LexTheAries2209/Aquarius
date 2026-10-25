@@ -1201,10 +1201,13 @@ struct ContentView: View {
 
 struct ProjectSettingsView: View {
     @ObservedObject var viewModel: AnalysisViewModel
+    @ObservedObject var updater: AppUpdater
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
         Form {
+            AppUpdateSettingsSection(updater: updater)
+
             Section("界面") {
                 Toggle("显示载入样片按钮", isOn: $viewModel.showsSampleLoader)
                 Toggle("显示元数据编辑界面", isOn: $viewModel.showsMetadataEditor)
@@ -1278,6 +1281,7 @@ struct ProjectSettingsView: View {
             }
 
         }
+        .disabled(updater.isInstallationReserved)
         .formStyle(.grouped)
         .padding(20)
         .frame(

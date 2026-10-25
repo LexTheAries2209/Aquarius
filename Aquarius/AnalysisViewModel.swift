@@ -63,6 +63,7 @@ final class AnalysisViewModel: ObservableObject {
     @Published var analyzingItemID: MediaQueueItem.ID?
     @Published var isBatchAnalyzing = false
     @Published var isBurningTimecode = false
+    @Published private(set) var isAppUpdateReserved = false
     @Published var batchProgressMessage: String?
     @Published var statusMessage = "导入视频或文件夹后开始 OCR"
     @Published var errorMessage: String?
@@ -218,7 +219,19 @@ final class AnalysisViewModel: ObservableObject {
     }
 
     var isAnalyzing: Bool {
+        hasActiveMediaOperation || isAppUpdateReserved
+    }
+
+    var hasActiveMediaOperation: Bool {
         analyzingItemID != nil || isBatchAnalyzing || isBurningTimecode
+    }
+
+    func setAppUpdateReserved(_ reserved: Bool) {
+        guard isAppUpdateReserved != reserved else { return }
+        if reserved {
+            pausePlayback()
+        }
+        isAppUpdateReserved = reserved
     }
 
     var hasEnabledFields: Bool {

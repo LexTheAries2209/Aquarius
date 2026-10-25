@@ -10,6 +10,8 @@ export CLANG_MODULE_CACHE_PATH="$TASK_TEMP_DIR/clang-module-cache"
 cd "$PROJECT_ROOT"
 
 xcrun swiftc \
+    Aquarius/AppUpdateConfiguration.swift \
+    Aquarius/AppUpdateSafety.swift \
     Aquarius/OCRModels.swift \
     Aquarius/OCRClipAnalyzer.swift \
     Aquarius/MediaInfoMetadata.swift \
