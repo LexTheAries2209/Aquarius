@@ -37,24 +37,12 @@ V1.2.1 的中文发布说明见 [docs/releases/v1.2.1.zh-CN.md](docs/releases/v1
 
 ### 核心功能
 
-- 导入单个视频、多个视频、文件夹，或直接拖拽素材到窗口。
-- 在视频预览上调整 OCR 检测区域，支持文件名、卷号、时间码三个字段。
-- 保存、重命名、导入和导出 ROI JSON 预设，适配不同 QTake 画面布局。
-- 对单个素材提取，或对当前列表批量提取。
-- 多点抽样识别并做一致性判断，输出可信、需复核或失败状态。
-- OCR 会读取 Vision 的多个候选，并按文件名、卷号和时间码各自的格式规则排序。
-- 时间码严格按选区裁剪；可框选范围允许超出视频四周各 1%，越界部分补黑边，预设会保留越界坐标。规范化后只显示时间码；悬停可查看原始 OCR。样本按实际视频帧顺序排列，并显示 `F` 帧号。
-- 支持 `A006C001` 这类 `LDDDLDDD` 紧凑摄影机文件名，并按字符位置处理常见字母/数字混淆；发生纠错的结果会降级为“需复核”。
-- 对 OCR 区域使用放大、灰度、对比度、锐化、反色和阈值二值化等自适应预处理，并融合多个版本的识别结果。
-- 时间码使用相邻帧连续性和实际有理帧率校验，覆盖 23.976、24、25、29.97 NDF/DF 和 30 fps。
-- 支持源时间码帧率自动判断，也可以手动指定 23.976、24、25、29.97 NDF、29.97 DF、30。
-- 检测视频帧率与源 TC 帧率不一致、疑似漂移、高风险时间码等情况；详细诊断可在项目设置里按需显示。
-- 读取现有文件元数据；如果系统安装了可选的 MediaInfo CLI（`mediainfo`），会显示更完整的容器、编码、帧率、时长和当前 timecode 信息。
-- 支持手动覆盖当前素材的文件名和起始 TC，也支持对当前列表批量覆盖卷号和机位号。
-- 导出面向 DaVinci Resolve、Adobe Premiere Pro、Final Cut Pro 7、Final Cut Pro 或 Avid Media Composer 的元数据。
-- 可选将起始时间码写入 QuickTime TMCD 轨道。
-- 可选复制到新文件夹并按识别或手动输入的文件名改名。
-- 可选在复制改名后自动生成一份配套元数据 CSV，使用改名后的真实文件名作为目标软件匹配键。
+- 从单个视频或批量素材的画面中识别文件名、卷号和源时间码。
+- 为不同的画面叠字布局调整并保存 OCR 区域预设。
+- 检查识别结果和时间码信息，并在导出前手动修正素材元数据。
+- 导出 DaVinci Resolve CSV，以及 Premiere Pro、Final Cut Pro 和 Avid Media Composer 可用的元数据文件。
+- 可选将起始时间码写入 QuickTime TMCD，或复制素材并按指定名称整理；也可为改名后的素材生成配套 CSV。
+- 可选使用 MediaInfo CLI 查看更完整的媒体文件信息。
 
 > 验证状态：DaVinci Resolve CSV 是当前已验证的主工作流；Premiere Pro XML、Final Cut Pro 7 XML、Final Cut Pro XML / FCPXML 和 Avid ALE 目前只通过本地结构/格式烟雾测试，尚未在对应工作软件中完成实际导入验证，等待更多项目测试和反馈。
 
@@ -193,25 +181,12 @@ Common use cases:
 
 ### Features
 
-- Import individual videos, multiple videos, folders, or drag files directly into the window.
-- Define OCR regions visually on top of the video preview.
-- Recognize clip name, reel number, and timecode fields.
-- Save, rename, import, and export ROI presets as JSON.
-- Analyze one clip or the whole queue.
-- Sample multiple frames and resolve stable metadata from repeated OCR readings.
-- Read multiple Apple Vision candidates and rank them with field-specific clip-name, reel, and timecode rules.
-- Crop timecode strictly to its ROI, allowing selection 1% beyond each video edge with black padding and preserved preset coordinates. Display the normalized value, with raw OCR available on hover. Sort samples by actual video frame time and show their `F` frame indices.
-- Support compact `LDDDLDDD` camera clip names such as `A006C001`, with position-constrained letter/digit correction and mandatory review for corrected results.
-- Apply adaptive ROI scaling, grayscale, contrast, sharpening, inversion, and threshold variants, then fuse their OCR evidence.
-- Validate timecode against adjacent frames and rational frame rates across 23.976, 24, 25, 29.97 NDF/DF, and 30 fps.
-- Detect source timecode rate automatically, or manually choose 23.976, 24, 25, 29.97 NDF, 29.97 DF, or 30.
-- Warn about frame-rate mismatch, suspected drift, high-risk readings, and mismatch against existing TMCD metadata; detailed diagnostics can be hidden or shown from Project Settings.
-- Read existing source metadata; with the optional MediaInfo CLI (`mediainfo`) installed, the app displays richer container, codec, frame-rate, duration, and timecode details.
-- Manually override clip name, start TC, reel number, and camera ID before export.
-- Export metadata for DaVinci Resolve, Adobe Premiere Pro, Final Cut Pro 7, Final Cut Pro, or Avid Media Composer.
-- Optionally write recovered start TC into QuickTime TMCD metadata.
-- Optionally copy files into a new folder using recognized or manually entered clip names.
-- Optionally create a companion metadata CSV after renaming, using the renamed output files as the target app match keys.
+- Recognizes clip names, reel numbers, and source timecode from individual videos or batches.
+- Adjusts and saves OCR regions for different burned-in overlay layouts.
+- Reviews recognition results and timecode information, with manual metadata correction before export.
+- Exports DaVinci Resolve CSV and metadata files for Premiere Pro, Final Cut Pro, and Avid Media Composer.
+- Optionally writes start timecode to QuickTime TMCD, or copies and renames media with a companion CSV.
+- Optionally uses MediaInfo CLI to show more detailed media-file information.
 
 > Verification status: DaVinci Resolve CSV is the currently verified primary workflow. Premiere Pro XML, Final Cut Pro 7 XML, Final Cut Pro XML / FCPXML, and Avid ALE have only passed local structure/format smoke tests; they have not yet been verified by importing into the corresponding production apps and need more field testing and feedback.
 
