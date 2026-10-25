@@ -1044,8 +1044,28 @@ struct ContentView: View {
             Text("识别字段")
                 .font(.headline)
 
-            ForEach(OCRFieldKind.allCases) { kind in
-                fieldToggleRow(for: kind)
+            HStack(spacing: 6) {
+                ForEach(OCRFieldKind.allCases) { kind in
+                    Toggle(
+                        isOn: Binding(
+                            get: { viewModel.isFieldEnabled(kind) },
+                            set: { isEnabled in
+                                performAfterViewUpdate {
+                                    viewModel.setField(kind, isEnabled: isEnabled)
+                                }
+                            }
+                        )
+                    ) {
+                        Label(kind.title, systemImage: icon(for: kind))
+                            .lineLimit(1)
+                    }
+                    .toggleStyle(.button)
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                    .frame(maxWidth: .infinity)
+                    .help("\(kind.title)识别")
+                    .accessibilityIdentifier("field-toggle-\(kind.rawValue)")
+                }
             }
 
             if !viewModel.hasEnabledFields {
@@ -1054,36 +1074,6 @@ struct ContentView: View {
                     .foregroundStyle(.orange)
             }
         }
-    }
-
-    private func fieldToggleRow(for kind: OCRFieldKind) -> some View {
-        HStack(spacing: 12) {
-            Image(systemName: icon(for: kind))
-                .font(.system(size: 17, weight: .medium))
-                .foregroundStyle(.secondary)
-                .frame(width: 26, alignment: .center)
-
-            Text(kind.title)
-                .font(.callout.weight(.semibold))
-                .frame(width: 62, alignment: .leading)
-
-            Toggle(
-                "",
-                isOn: Binding(
-                    get: { viewModel.isFieldEnabled(kind) },
-                    set: { isEnabled in
-                        performAfterViewUpdate {
-                            viewModel.setField(kind, isEnabled: isEnabled)
-                        }
-                    }
-                )
-            )
-            .toggleStyle(.switch)
-            .labelsHidden()
-            .fixedSize()
-            .frame(width: 72, alignment: .trailing)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private var sampleLog: some View {
