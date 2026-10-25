@@ -41,10 +41,6 @@ struct AppUpdateSettingsSection: View {
 
             statusContent
 
-            Text("更新清单和安装包均需通过 Sparkle 签名验证。安装会重启 Aquarius；请先结束正在进行的媒体处理。V1.2.1 及更早版本不含更新器，首次升级需从 GitHub Releases 手动安装。")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
         }
         .onAppear {
             updater.start()
