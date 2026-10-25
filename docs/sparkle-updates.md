@@ -13,6 +13,7 @@
 - 用户确认安装后先预留应用操作，暂停媒体播放并阻止新任务，再让 Sparkle 退出、替换和重启应用。普通退出若碰到待确认的预备安装，先取消安装，再完成退出。
 - V1.2.1 及更早已发布版本没有 Sparkle。它们不会收到此 feed 的更新；首个包含 updater 的新版需手动安装，此后的版本才可使用 Sparkle 链路。
 - Sparkle EdDSA 签名不等于 Developer ID 代码签名，也不证明 Apple notarization 或 Gatekeeper 信任。逐项报告实际状态，不得互相替代。
+- 发布 App 的代码签名仍须通过 `codesign --verify --deep --strict`；有效的 ad-hoc 签名可以满足本链路，不代表 Developer ID 或公证。Sparkle 包和清单必须再独立通过 EdDSA 签名验证。
 
 ### 发布物布局
 
@@ -81,6 +82,7 @@ This policy is specific to Aquarius (`lex.Aquarius`). Sparkle 2.10.0 is pinned i
 - After explicit install confirmation, reserve app operations, pause playback, and block new work before Sparkle terminates, replaces, and relaunches the App. If the user quits with an unconfirmed prepared update, cancel the update before completing the quit.
 - Published V1.2.1 and earlier lack Sparkle. They cannot receive this feed; install the first updater-enabled version manually. Later versions can use the Sparkle flow.
 - Sparkle EdDSA signatures are separate from Developer ID code signing and do not establish Apple notarization or Gatekeeper trust. Report each status accurately.
+- The release App's code signature must pass `codesign --verify --deep --strict`. A valid ad-hoc signature is acceptable for this flow but does not establish Developer ID identity or notarization; the package and feed still require their independent Sparkle EdDSA signatures.
 
 ### Artifact layout
 

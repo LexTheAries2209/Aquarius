@@ -9,6 +9,8 @@ import subprocess
 import urllib.parse
 import xml.etree.ElementTree as ET
 
+KEY_ACCOUNT = "lex.Aquarius"
+
 
 def run(*args):
     return subprocess.run(args, check=True, text=True, capture_output=True, timeout=90)
@@ -22,7 +24,6 @@ def main():
     parser.add_argument("--download-url-prefix", required=True)
     parser.add_argument("--release-notes", required=True, type=pathlib.Path)
     parser.add_argument("--previous-build", default="0005")
-    parser.add_argument("--key-account", default="lex.Aquarius")
     args = parser.parse_args()
 
     app = args.app.resolve()
@@ -64,7 +65,7 @@ def main():
 
     run("codesign", "--verify", "--deep", "--strict", str(app))
     expected_key = run(
-        str(tools / "generate_keys"), "--account", args.key_account, "-p"
+        str(tools / "generate_keys"), "--account", KEY_ACCOUNT, "-p"
     ).stdout.strip()
     if info.get("SUPublicEDKey") != expected_key:
         parser.error("The existing keychain account's public key does not match the App. No key was changed.")
@@ -79,7 +80,7 @@ def main():
 
     run(
         str(tools / "generate_appcast"),
-        "--account", args.key_account,
+        "--account", KEY_ACCOUNT,
         "--maximum-deltas", "0",
         "--embed-release-notes",
         "--download-url-prefix", args.download_url_prefix,
@@ -88,16 +89,21 @@ def main():
     )
 
     feed = output / "appcast.xml"
-    run(str(tools / "sign_update"), "--account", args.key_account, "--verify", str(feed))
+    run(str(tools / "sign_update"), "--account", KEY_ACCOUNT, "--verify", str(feed))
     namespace = {"sparkle": "http://www.andymatuschak.org/xml-namespaces/sparkle"}
     item = ET.parse(feed).find("./channel/item")
     if item is None or item.findtext("sparkle:version", namespaces=namespace) != build:
         raise ValueError("The signed feed's sparkle:version does not match CFBundleVersion.")
+    if item.findtext("sparkle:shortVersionString", namespaces=namespace) != version:
+        raise ValueError("The appcast marketing version does not match CFBundleShortVersionString.")
     enclosure = item.find("enclosure")
     if enclosure is None or int(enclosure.attrib["length"]) != archive.stat().st_size:
         raise ValueError("The appcast archive length does not match the immutable ZIP.")
+    expected_url = args.download_url_prefix + archive.name
+    if enclosure.attrib.get("url") != expected_url:
+        raise ValueError("The appcast enclosure URL does not match the final ZIP URL.")
     signature = enclosure.attrib["{" + namespace["sparkle"] + "}edSignature"]
-    run(str(tools / "sign_update"), "--account", args.key_account, "--verify", str(archive), signature)
+    run(str(tools / "sign_update"), "--account", KEY_ACCOUNT, "--verify", str(archive), signature)
     print(f"Verified signed Aquarius build {build} ({version}) in {output}")
     print("Upload the immutable ZIP first and appcast.xml last. No publication was performed.")
 
