@@ -13,7 +13,7 @@ KEY_ACCOUNT = "lex.Aquarius"
 
 
 def run(*args):
-    return subprocess.run(args, check=True, text=True, capture_output=True, timeout=90)
+    return subprocess.run(args, check=True, text=True, capture_output=True, timeout=300)
 
 
 def main():
