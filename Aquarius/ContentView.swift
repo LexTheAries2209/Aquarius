@@ -14,9 +14,6 @@ private func aquariusDisplayName() -> String {
 struct ContentView: View {
     @ObservedObject var viewModel: AnalysisViewModel
     @State private var isDropTargeted = false
-    @State private var samplePanelDragStartHeight: CGFloat?
-    @State private var transientSamplePanelHeight: CGFloat?
-    @State private var isSamplePanelCursorPushed = false
     @SceneStorage("aquarius.ocrSamplePanelHeight") private var savedSamplePanelHeight = 300.0
     @Environment(\.openSettings) private var openSettings
 
@@ -309,49 +306,51 @@ struct ContentView: View {
     }
 
     private var aquariusDock: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(spacing: 0) {
             Divider()
 
-            Link(destination: aquariusGitHubURL) {
-                VStack(alignment: .leading, spacing: 3) {
-                    Label("打开 Aquarius GitHub 仓库", systemImage: "safari")
-                        .font(.caption.weight(.semibold))
-                    Text("GitHub: github.com/LexTheAries2209/Aquarius")
-                        .font(.caption2.monospaced())
+            VStack(alignment: .leading, spacing: 8) {
+                Link(destination: aquariusGitHubURL) {
+                    VStack(alignment: .leading, spacing: 3) {
+                        Label("打开 Aquarius GitHub 仓库", systemImage: "safari")
+                            .font(.caption.weight(.semibold))
+                        Text("GitHub: github.com/LexTheAries2209/Aquarius")
+                            .font(.caption2.monospaced())
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.68)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(.secondary)
+                .help("GitHub 仓库：代码、版本说明、发布包与问题反馈")
+                .accessibilityLabel("打开 Aquarius GitHub 仓库")
+
+                Divider()
+
+                HStack(spacing: 8) {
+                    SettingsLink {
+                        Label("设置", systemImage: "gearshape")
+                            .font(.caption.weight(.semibold))
+                    }
+                    .help("打开项目设置")
+                    .accessibilityLabel("打开项目设置")
+
+                    Spacer(minLength: 8)
+
+                    Text("\(aquariusDisplayName()) · \(NSUserName())")
+                        .font(.caption2)
                         .lineLimit(1)
-                        .minimumScaleFactor(0.68)
+                        .truncationMode(.middle)
+                        .help("Aquarius 版本和 macOS 用户名")
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
+                .buttonStyle(.plain)
+                .foregroundStyle(.secondary)
             }
-            .buttonStyle(.plain)
-            .foregroundStyle(.secondary)
-            .help("GitHub 仓库：代码、版本说明、发布包与问题反馈")
-            .accessibilityLabel("打开 Aquarius GitHub 仓库")
-
-            Divider()
-
-            HStack(spacing: 8) {
-                SettingsLink {
-                    Label("设置", systemImage: "gearshape")
-                        .font(.caption.weight(.semibold))
-                }
-                .help("打开项目设置")
-                .accessibilityLabel("打开项目设置")
-
-                Spacer(minLength: 8)
-
-                Text("\(aquariusDisplayName()) · \(NSUserName())")
-                    .font(.caption2)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
-                    .help("Aquarius 版本和 macOS 用户名")
-            }
-            .buttonStyle(.plain)
-            .foregroundStyle(.secondary)
+            .padding(10)
+            .background(.bar)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(10)
-        .background(.bar)
     }
 
     private func openAquariusSettings() {
@@ -365,88 +364,30 @@ struct ContentView: View {
                 columnHeight: proxy.size.height
             )
             let sampleLogHeight = OCRSamplePanelSizing.clampedHeight(
-                transientSamplePanelHeight ?? CGFloat(savedSamplePanelHeight),
+                CGFloat(savedSamplePanelHeight),
                 maximumHeight: maximumSampleHeight
             )
+            let minimumSampleHeight = min(
+                OCRSamplePanelSizing.minimumHeight,
+                maximumSampleHeight
+            )
 
-            VStack(spacing: 0) {
+            // Let the native split view own divider tracking for the same behavior as the sidebars.
+            VSplitView {
                 videoWorkspace
                     .frame(
                         minHeight: OCRSamplePanelSizing.minimumVideoWorkspaceHeight,
                         maxHeight: .infinity
                     )
-                samplePanelDivider(
-                    height: sampleLogHeight,
-                    maximumHeight: maximumSampleHeight
-                )
                 sampleLog
-                    .frame(height: sampleLogHeight)
+                    .frame(
+                        minHeight: minimumSampleHeight,
+                        idealHeight: sampleLogHeight,
+                        maxHeight: maximumSampleHeight
+                    )
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .onDisappear {
-                samplePanelDragStartHeight = nil
-                if let transientSamplePanelHeight {
-                    savedSamplePanelHeight = Double(transientSamplePanelHeight)
-                    self.transientSamplePanelHeight = nil
-                }
-                if isSamplePanelCursorPushed {
-                    NSCursor.pop()
-                    isSamplePanelCursorPushed = false
-                }
-            }
         }
-    }
-
-    private func samplePanelDivider(height: CGFloat, maximumHeight: CGFloat) -> some View {
-        ZStack {
-            Rectangle()
-                .fill(Color.clear)
-            Rectangle()
-                .fill(Color(nsColor: .separatorColor))
-                .frame(height: 1)
-        }
-        .frame(maxWidth: .infinity)
-        .frame(height: OCRSamplePanelSizing.dividerHeight)
-        .contentShape(Rectangle())
-        .onHover { isHovering in
-            if isHovering, !isSamplePanelCursorPushed {
-                NSCursor.resizeUpDown.push()
-                isSamplePanelCursorPushed = true
-            } else if !isHovering, isSamplePanelCursorPushed {
-                NSCursor.pop()
-                isSamplePanelCursorPushed = false
-            }
-        }
-        .gesture(
-            DragGesture(minimumDistance: 2)
-                .onChanged { value in
-                    let startingHeight = samplePanelDragStartHeight ?? height
-                    samplePanelDragStartHeight = startingHeight
-                    // Keep pointer updates local; persist the final size when dragging ends.
-                    transientSamplePanelHeight = OCRSamplePanelSizing.clampedHeight(
-                        startingHeight - value.translation.height,
-                        maximumHeight: maximumHeight
-                    )
-                }
-                .onEnded { _ in
-                    if let transientSamplePanelHeight {
-                        savedSamplePanelHeight = Double(transientSamplePanelHeight)
-                        self.transientSamplePanelHeight = nil
-                    }
-                    samplePanelDragStartHeight = nil
-                }
-        )
-        .accessibilityElement()
-        .accessibilityLabel("调整 OCR 样本区域高度")
-        .accessibilityValue("\(Int(height.rounded())) 点")
-        .accessibilityAddTraits(.isButton)
-        .accessibilityAdjustableAction { direction in
-            let change: CGFloat = direction == .increment ? 24 : -24
-            savedSamplePanelHeight = Double(
-                OCRSamplePanelSizing.clampedHeight(height + change, maximumHeight: maximumHeight)
-            )
-        }
-        .help("拖动调整 OCR 样本区域高度，最多为窗口高度的一半")
     }
 
     private var videoWorkspace: some View {

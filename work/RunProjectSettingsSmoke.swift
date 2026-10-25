@@ -158,10 +158,13 @@ struct RunProjectSettingsSmoke {
                       "in-range sample panel heights must be retained")
         }
         let narrowWindowMaximum = OCRSamplePanelSizing.maximumHeight(windowContentHeight: 500, columnHeight: 300)
-        try check(narrowWindowMaximum == 50,
+        try check(narrowWindowMaximum == 300 - OCRSamplePanelSizing.minimumVideoWorkspaceHeight
+                  - OCRSamplePanelSizing.dividerHeight,
                   "a narrow video column must further constrain the window half-height limit")
-        try check(OCRSamplePanelSizing.clampedHeight(300, maximumHeight: narrowWindowMaximum) == 50,
-                  "window resizing must visually clamp a saved height to the current available space")
+        try check(
+            OCRSamplePanelSizing.clampedHeight(300, maximumHeight: narrowWindowMaximum) == narrowWindowMaximum,
+            "window resizing must visually clamp a saved height to the current available space"
+        )
         print("OCR sample panel sizing passed: window half-height cap, playback minimum, drag bounds and resize clamp")
     }
 

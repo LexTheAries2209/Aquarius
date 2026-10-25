@@ -100,7 +100,7 @@ enum OCRSelectionGeometry {
 enum OCRSamplePanelSizing {
     nonisolated static let minimumHeight: CGFloat = 160
     nonisolated static let minimumVideoWorkspaceHeight: CGFloat = 240
-    nonisolated static let dividerHeight: CGFloat = 10
+    nonisolated static let dividerHeight: CGFloat = 1
 
     nonisolated static func maximumHeight(windowContentHeight: CGFloat, columnHeight: CGFloat) -> CGFloat {
         max(
