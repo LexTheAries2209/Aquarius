@@ -14,7 +14,8 @@
 - V1.2.1 及更早已发布版本没有 Sparkle。它们不会收到此 feed 的更新；首个包含 updater 的新版需手动安装，此后的版本才可使用 Sparkle 链路。
 - V1.3.0 是首个包含 updater 的发布版本。其 Finder/App 名称为稳定的 `Aquarius.app` / `Aquarius`，完整语义版本与独立四位 Build 分别保存在版本元数据中。
 - Sparkle EdDSA 签名不等于 Developer ID 代码签名，也不证明 Apple notarization 或 Gatekeeper 信任。逐项报告实际状态，不得互相替代。
-- 发布 App 的代码签名仍须通过 `codesign --verify --deep --strict`；有效的 ad-hoc 签名可以满足本链路，不代表 Developer ID 或公证。Sparkle 包和清单必须再独立通过 EdDSA 签名验证。
+- Release App 主程序与内置 Sparkle.framework 必须使用同一个非空 Team ID 签名；ad-hoc 签名无法通过 macOS hardened runtime 的库验证，不能用于启用 Sparkle 的发布包。发布前仍须通过 `codesign --verify --deep --strict`；Sparkle 包和清单还必须独立通过 EdDSA 签名验证。
+- 匹配的 Team ID 代码签名不等于 Developer ID 或 Apple 公证；发布说明须分别报告代码签名、公证与 Sparkle EdDSA 状态。
 
 ### 发布物布局
 
@@ -40,7 +41,7 @@ Aquarius旧版软件/
 
 1. 读取 [versioning.md](versioning.md) 和 [ReleaseBuilds.json](../Configuration/ReleaseBuilds.json)，核实当前最新正式 Release、实际上一版 App 的 `CFBundleVersion` 以及本次已预留编号。
 2. 使用确切版本更新 Aquarius Debug/Release 元数据和双语发布说明；发布构建号独立递增为四位数，并记录预留状态。不要根据 patch 版本推算构建号。
-3. 通过 Xcode `Release` archive 构建，验证产物名、bundle ID、版本、四位构建号、arm64 架构、Sparkle framework、Info 配置、代码签名有效性和 dSYM。保留完整 `.xcarchive`。
+3. 通过 Xcode `Release` archive 构建，验证产物名、bundle ID、版本、四位构建号、arm64 架构、Sparkle framework、Info 配置、主程序与 Sparkle framework 的非空且一致 Team ID、代码签名有效性和 dSYM。保留完整 `.xcarchive`。
 4. 先更新 README、累计日志、双语发布说明和旧版 App/源码备份。保留稳定 App 包名 `Aquarius.app`。
 5. 使用 `scripts/prepare-sparkle-update.py` 从已验证的 archive App 生成新 ZIP 和签名 `appcast.xml`。脚本必须验证 public key 与 `lex.Aquarius` account 一致、版本/构建号、签名 feed、ZIP 长度和 ZIP EdDSA 签名。任何失败都停止发布。
 6. 在 staging feed 上运行 `scripts/test-sparkle-update.py`，验证真实 Sparkle 从旧 fixture 检出新版本、验证签名、下载、解包、等待确认、替换并重启；也验证取消、退出、签名篡改和 feed 缺失失败时不替换。fixture 私钥临时生成，仅用于隔离测试，不得接触生产账户。
@@ -84,7 +85,8 @@ This policy is specific to Aquarius (`lex.Aquarius`). Sparkle 2.10.0 is pinned i
 - Published V1.2.1 and earlier lack Sparkle. They cannot receive this feed; install the first updater-enabled version manually. Later versions can use the Sparkle flow.
 - V1.3.0 is the first release with the updater. Its Finder/App name is the stable `Aquarius.app` / `Aquarius`; the complete semantic version and independent four-digit Build are stored separately in bundle metadata.
 - Sparkle EdDSA signatures are separate from Developer ID code signing and do not establish Apple notarization or Gatekeeper trust. Report each status accurately.
-- The release App's code signature must pass `codesign --verify --deep --strict`. A valid ad-hoc signature is acceptable for this flow but does not establish Developer ID identity or notarization; the package and feed still require their independent Sparkle EdDSA signatures.
+- The Release App executable and embedded Sparkle.framework must have the same non-empty Team ID; ad-hoc signatures cannot satisfy macOS hardened-runtime library validation and must not ship in updater-enabled builds. Also require `codesign --verify --deep --strict`. The matching Team ID does not establish Developer ID identity or notarization; the archive and feed still require their independent Sparkle EdDSA signatures.
+- A matching Team ID is not Developer ID signing or Apple notarization. Report code signing, notarization, and Sparkle EdDSA separately.
 
 ### Artifact layout
 
@@ -110,7 +112,7 @@ Retain the full Xcode `.xcarchive` and matching dSYM separately, outside the pub
 
 1. Read [versioning.md](versioning.md) and [ReleaseBuilds.json](../Configuration/ReleaseBuilds.json). Verify the latest stable Release, the actual previous App's `CFBundleVersion`, and the current build reservation.
 2. Set the exact requested version in Aquarius Debug/Release metadata and bilingual notes. Allocate an independent, increasing four-digit build and record it as reserved. Never infer the build number from the patch version.
-3. Create an Xcode Release archive. Verify product name, bundle ID, version, four-digit build, arm64 architecture, embedded Sparkle framework, Info settings, valid code signature, and dSYM. Retain the complete `.xcarchive`.
+3. Create an Xcode Release archive. Verify product name, bundle ID, version, four-digit build, arm64 architecture, embedded Sparkle framework, Info settings, matching non-empty Team IDs for the App executable and Sparkle framework, valid code signature, and dSYM. Retain the complete `.xcarchive`.
 4. Update README, cumulative release log, bilingual release notes, and the old-version App/source backup. Keep the packaged App name `Aquarius.app`.
 5. Run `scripts/prepare-sparkle-update.py` on the verified archive App to create the ZIP and signed `appcast.xml`. It must verify the account public key, version/build metadata, signed feed, ZIP length, and ZIP EdDSA signature. Stop on any failure.
 6. Run `scripts/test-sparkle-update.py` against a staging feed. Exercise real Sparkle discovery, signature verification, download, extraction, confirmation, replacement, and relaunch, plus cancellation, quit, tampered-signature, and missing-feed cases. Generate an isolated fixture key; never use or expose the production key in tests.

@@ -16,6 +16,31 @@ def run(*args):
     return subprocess.run(args, check=True, text=True, capture_output=True, timeout=300)
 
 
+def team_identifier(code):
+    details = run("codesign", "-dv", "--verbose=4", str(code))
+    output = details.stdout + details.stderr
+    match = re.search(r"^TeamIdentifier=(.+)$", output, re.MULTILINE)
+    if match is None or match.group(1).strip() == "not set":
+        return None
+    return match.group(1).strip()
+
+
+def verify_app_sparkle_team(app, parser):
+    sparkle_binary = app / "Contents/Frameworks/Sparkle.framework/Versions/B/Sparkle"
+    app_team = team_identifier(app)
+    sparkle_team = team_identifier(sparkle_binary)
+    if not app_team or not sparkle_team:
+        parser.error(
+            "The App and embedded Sparkle framework must have a team-identified "
+            "code signature; ad-hoc signatures cannot satisfy macOS library validation."
+        )
+    if app_team != sparkle_team:
+        parser.error(
+            "The App and embedded Sparkle framework must be signed by the same team "
+            f"(App: {app_team}, Sparkle: {sparkle_team})."
+        )
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--app", required=True, type=pathlib.Path)
@@ -66,6 +91,7 @@ def main():
         parser.error("The archived App does not embed Sparkle.framework.")
 
     run("codesign", "--verify", "--deep", "--strict", str(app))
+    verify_app_sparkle_team(app, parser)
     expected_key = run(
         str(tools / "generate_keys"), "--account", KEY_ACCOUNT, "-p"
     ).stdout.strip()
