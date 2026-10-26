@@ -6,9 +6,9 @@ Aquarius is a local macOS utility for recovering clip metadata from burned-in pi
 
 Aquarius 是一个本地 macOS 工具，用于从视频画面里已经烧录的文字信息中恢复素材元数据。它主要面向 QTake、现场监看录制、dailies 或代理文件场景：画面上能看到文件名、卷号和源时间码，但文件自身缺少可靠的剪辑元数据。
 
-[Latest Release / 最新版本](https://github.com/LexTheAries2209/Aquarius/releases/latest): `v1.3.0`
+[Latest Release / 最新版本](https://github.com/LexTheAries2209/Aquarius/releases/latest): `v1.3.1`
 
-Bilingual release notes / 双语发布说明：[docs/releases/v1.3.0.md](docs/releases/v1.3.0.md)
+Bilingual release notes / 双语发布说明：[docs/releases/v1.3.1.md](docs/releases/v1.3.1.md)
 
 Release Log / 发布记录：[CHANGELOG.md](CHANGELOG.md)
 
@@ -22,13 +22,13 @@ Aquarius 不是剪辑软件，也不是完整的媒体资产管理系统。它�
 
 ### 下载和安装
 
-1. 前往 [GitHub Releases](https://github.com/LexTheAries2209/Aquarius/releases/latest) 下载 `Aquarius-v1.3.0-macOS.zip`。
+1. 前往 [GitHub Releases](https://github.com/LexTheAries2209/Aquarius/releases/latest) 下载 `Aquarius-v1.3.1-macOS.zip`。
 2. 解压后把 `Aquarius.app` 放到 `Applications` 或你的本地工具目录。
 3. 首次打开时，如果 macOS Gatekeeper 提示来自互联网下载的 App，请在 Finder 中右键点击 App 后选择“打开”，或在“系统设置 > 隐私与安全性”中允许打开。
 
-V1.3.0 的中文发布说明见 [docs/releases/v1.3.0.zh-CN.md](docs/releases/v1.3.0.zh-CN.md)。
+V1.3.1 的中文发布说明见 [docs/releases/v1.3.1.zh-CN.md](docs/releases/v1.3.1.zh-CN.md)。
 
-从 V1.3.0 开始，可在“设置 > 更新”中手动检查或选择启动时检查。更新清单和安装包都由 Sparkle EdDSA 签名验证；V1.2.1 及更早版本没有内置更新器，需要先从 GitHub Releases 手动升级一次。更新器启用发布后的说明见 [更新发布规则](docs/sparkle-updates.md)。
+从 V1.3.0 开始，可在“设置 > 更新”中手动检查或选择启动时检查。更新清单和安装包都由 Sparkle EdDSA 签名验证；V1.2.1 及更早版本没有内置更新器，需要先从 GitHub Releases 手动升级一次。V1.3.0 用户也需要手动安装 V1.3.1 一次，之后即可继续使用 Sparkle 更新。更新器启用发布后的说明见 [更新发布规则](docs/sparkle-updates.md)。
 
 典型用途：
 
@@ -53,7 +53,7 @@ V1.3.0 的中文发布说明见 [docs/releases/v1.3.0.zh-CN.md](docs/releases/v1
 
 - 当前源码与后续发布版：Apple silicon（M 系列芯片），macOS `14.0` 或更新版本；使用发布版不需要 Xcode。
 - 历史 V1.0.3 下载包仍是同时支持 Apple silicon 和 Intel 的 universal 构建；这一兼容范围不代表后续版本。
-- 历史 V1.2.1 未签名且未经公证；V1.3.0 使用有效的 ad-hoc 代码签名，并通过 Sparkle EdDSA 验证更新清单和安装包。当前版本没有 Developer ID 签名或 Apple 公证。
+- 历史 V1.2.1 未签名且未经公证；V1.3.1 使用有效的 Apple Development 团队代码签名，并通过 Sparkle EdDSA 验证更新清单和安装包。没有 Developer ID 签名或 Apple 公证。
 - 从源码构建：需要 Xcode，当前工程使用 SwiftUI / AVFoundation / CoreImage / CoreMedia / Vision。
 - 当前源码工程配置：
   - Swift `5.0`
@@ -169,13 +169,13 @@ Aquarius is not an editor or a full media asset manager. It focuses on one job: 
 
 ### Download And Install
 
-1. Download `Aquarius-v1.3.0-macOS.zip` from [GitHub Releases](https://github.com/LexTheAries2209/Aquarius/releases/latest).
+1. Download `Aquarius-v1.3.1-macOS.zip` from [GitHub Releases](https://github.com/LexTheAries2209/Aquarius/releases/latest).
 2. Unzip it and move `Aquarius.app` to `Applications` or your local tools folder.
 3. On first launch, if macOS Gatekeeper shows an internet-download warning, right-click the app in Finder and choose Open, or allow it from System Settings > Privacy & Security.
 
-English release notes for V1.3.0 are available at [docs/releases/v1.3.0.en.md](docs/releases/v1.3.0.en.md).
+English release notes for V1.3.1 are available at [docs/releases/v1.3.1.en.md](docs/releases/v1.3.1.en.md).
 
-Starting with V1.3.0, users can check manually or enable launch checks in Settings > Updates. Sparkle verifies EdDSA signatures on both the appcast and downloaded archive. V1.2.1 and earlier do not include the updater, so the first upgrade must be installed manually from GitHub Releases. See the [update release policy](docs/sparkle-updates.md).
+Starting with V1.3.0, users can check manually or enable launch checks in Settings > Updates. Sparkle verifies EdDSA signatures on both the appcast and downloaded archive. V1.2.1 and earlier require a manual upgrade to an updater-enabled release. Users on V1.3.0 must also install V1.3.1 manually once; later updates can use Sparkle. See the [update release policy](docs/sparkle-updates.md).
 
 Common use cases:
 
@@ -200,7 +200,7 @@ Common use cases:
 
 - Current source and future releases: Apple silicon (M-series), macOS `14.0` or later; Xcode is not required for release builds.
 - The historical V1.0.3 download remains a universal Apple silicon and Intel build; that compatibility does not apply to future releases.
-- The historical V1.2.1 build is unsigned and not notarized. V1.3.0 uses a valid ad-hoc code signature and Sparkle EdDSA signatures for its feed and archive; it does not have Developer ID signing or Apple notarization.
+- The historical V1.2.1 build is unsigned and not notarized. V1.3.1 uses an Apple Development team code signature and Sparkle EdDSA signatures for its feed and archive; it does not have Developer ID signing or Apple notarization.
 - Source build: Xcode with SwiftUI, AVFoundation, CoreImage, CoreMedia, and Vision support.
 - Current source project settings:
   - Swift `5.0`
@@ -328,6 +328,6 @@ App icons, branding assets, and bundled sample videos are not covered by the GPL
 
 ## Version Naming / 版本命名
 
-V1.2.1 retains its historical Xcode `Version = 1.2`, `Build = 1` metadata. Starting with V1.3.0, releases use a complete semantic `MARKETING_VERSION` and a separate globally increasing four-digit `CURRENT_PROJECT_VERSION`; Build `0006` is the first release build under this scheme. The App name remains `Aquarius.app`. See [docs/versioning.md](docs/versioning.md) and [Configuration/ReleaseBuilds.json](Configuration/ReleaseBuilds.json).
+V1.2.1 retains its historical Xcode `Version = 1.2`, `Build = 1` metadata. Starting with V1.3.0, releases use a complete semantic `MARKETING_VERSION` and a separate globally increasing four-digit `CURRENT_PROJECT_VERSION`; V1.3.1 uses Build `0007`. The App name remains `Aquarius.app`. See [docs/versioning.md](docs/versioning.md) and [Configuration/ReleaseBuilds.json](Configuration/ReleaseBuilds.json).
 
-V1.2.1 保留历史 Xcode 元数据 `Version = 1.2`、`Build = 1`。从 V1.3.0 起，发布使用完整语义版本号 `MARKETING_VERSION` 和独立、全局递增的四位 `CURRENT_PROJECT_VERSION`；Build `0006` 是此规则下的首个发布构建。App 名称固定为 `Aquarius.app`。详见 [docs/versioning.md](docs/versioning.md) 和 [Configuration/ReleaseBuilds.json](Configuration/ReleaseBuilds.json)。
+V1.2.1 保留历史 Xcode 元数据 `Version = 1.2`、`Build = 1`。从 V1.3.0 起，发布使用完整语义版本号 `MARKETING_VERSION` 和独立、全局递增的四位 `CURRENT_PROJECT_VERSION`；V1.3.1 使用 Build `0007`。App 名称固定为 `Aquarius.app`。详见 [docs/versioning.md](docs/versioning.md) 和 [Configuration/ReleaseBuilds.json](Configuration/ReleaseBuilds.json)。

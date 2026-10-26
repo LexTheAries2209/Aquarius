@@ -1,5 +1,12 @@
 # Aquarius Release Log
 
+## V1.3.1 - 2026-10-26
+
+[GitHub Release](https://github.com/LexTheAries2209/Aquarius/releases/tag/v1.3.1) · [Release notes](docs/releases/v1.3.1.md)
+
+- 中文：修复 V1.3.0 在部分 Mac 上无法启动的问题；V1.3.0 用户需手动安装本版一次，之后可恢复应用内更新。
+- English: Fixed a launch failure affecting some V1.3.0 installations. V1.3.0 users must install this release manually once before resuming in-app updates.
+
 ## V1.3.0 - 2026-10-26
 
 [GitHub Release](https://github.com/LexTheAries2209/Aquarius/releases/tag/v1.3.0) · [Release notes](docs/releases/v1.3.0.md)

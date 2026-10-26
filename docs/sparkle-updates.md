@@ -11,7 +11,7 @@
 - 自动检查默认关闭；可由用户在“设置 > 更新”中开启。自动下载和无确认安装保持关闭。手动检查、启动检查、下载开始、准备安装和退出安装各自经过更新安全门。
 - 已有视频识别、批处理或文件处理任务时，不开始下载；任务在下载期间启动则取消下载。已下载/解包的更新若遇到任务冲突或用户取消，必须用 Sparkle 的 skip/cancel 路径取消安装，不能用 dismiss 保留“退出时继续安装”。
 - 用户确认安装后先预留应用操作，暂停媒体播放并阻止新任务，再让 Sparkle 退出、替换和重启应用。普通退出若碰到待确认的预备安装，先取消安装，再完成退出。
-- V1.2.1 及更早已发布版本没有 Sparkle。它们不会收到此 feed 的更新；首个包含 updater 的新版需手动安装，此后的版本才可使用 Sparkle 链路。
+- V1.2.1 及更早已发布版本没有 Sparkle。它们不会收到此 feed 的更新；首个包含 updater 的新版需手动安装。V1.3.0 的代码签名问题可能导致 App 无法启动，因此 V1.3.0 用户必须手动安装 V1.3.1 一次，后续版本才可使用 Sparkle 链路。
 - V1.3.0 是首个包含 updater 的发布版本。其 Finder/App 名称为稳定的 `Aquarius.app` / `Aquarius`，完整语义版本与独立四位 Build 分别保存在版本元数据中。
 - Sparkle EdDSA 签名不等于 Developer ID 代码签名，也不证明 Apple notarization 或 Gatekeeper 信任。逐项报告实际状态，不得互相替代。
 - Release App 主程序与内置 Sparkle.framework 必须使用同一个非空 Team ID 签名；ad-hoc 签名无法通过 macOS hardened runtime 的库验证，不能用于启用 Sparkle 的发布包。发布前仍须通过 `codesign --verify --deep --strict`；Sparkle 包和清单还必须独立通过 EdDSA 签名验证。
@@ -82,7 +82,7 @@ This policy is specific to Aquarius (`lex.Aquarius`). Sparkle 2.10.0 is pinned i
 - Automatic checks are off by default and user-controlled in Settings > Updates. Automatic downloads and install-without-confirmation remain disabled. Gate manual checks, launch checks, download start, prepared installation, and application termination independently.
 - Do not begin a download while media recognition, batch, or file processing is active. Cancel an in-progress download if work starts. If work conflicts with a downloaded/prepared update or the user cancels, use Sparkle's skip/cancel path; do not dismiss and leave install-on-quit armed.
 - After explicit install confirmation, reserve app operations, pause playback, and block new work before Sparkle terminates, replaces, and relaunches the App. If the user quits with an unconfirmed prepared update, cancel the update before completing the quit.
-- Published V1.2.1 and earlier lack Sparkle. They cannot receive this feed; install the first updater-enabled version manually. Later versions can use the Sparkle flow.
+- Published V1.2.1 and earlier lack Sparkle. They cannot receive this feed; install the first updater-enabled version manually. A signing issue can prevent V1.3.0 from launching, so V1.3.0 users must manually install V1.3.1 once before later releases can use the Sparkle flow.
 - V1.3.0 is the first release with the updater. Its Finder/App name is the stable `Aquarius.app` / `Aquarius`; the complete semantic version and independent four-digit Build are stored separately in bundle metadata.
 - Sparkle EdDSA signatures are separate from Developer ID code signing and do not establish Apple notarization or Gatekeeper trust. Report each status accurately.
 - The Release App executable and embedded Sparkle.framework must have the same non-empty Team ID; ad-hoc signatures cannot satisfy macOS hardened-runtime library validation and must not ship in updater-enabled builds. Also require `codesign --verify --deep --strict`. The matching Team ID does not establish Developer ID identity or notarization; the archive and feed still require their independent Sparkle EdDSA signatures.

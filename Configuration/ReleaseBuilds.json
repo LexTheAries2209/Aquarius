@@ -12,7 +12,7 @@
       "v1.1.1",
       "v1.2.1"
     ],
-    "nextAvailableBuild": "0007"
+    "nextAvailableBuild": "0008"
   },
   "allocations": [
     {
@@ -20,6 +20,12 @@
       "status": "published",
       "version": "1.3.0",
       "tag": "v1.3.0"
+    },
+    {
+      "build": "0007",
+      "status": "reserved",
+      "version": "1.3.1",
+      "tag": "v1.3.1"
     }
   ]
 }

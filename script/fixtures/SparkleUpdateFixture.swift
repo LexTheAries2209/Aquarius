@@ -36,7 +36,7 @@ private final class FixtureDelegate: NSObject, NSApplicationDelegate {
 
         root = URL(fileURLWithPath: rootPath, isDirectory: true)
         self.scenario = scenario
-        if build == "0006" {
+        if build == "0007" {
             finish([
                 "result": "updated",
                 "build": build,
@@ -91,6 +91,8 @@ private final class FixtureDelegate: NSObject, NSApplicationDelegate {
                     let now = ProcessInfo.processInfo.systemUptime
                     if self.blockedAt == nil { self.blockedAt = now }
                     guard now - self.blockedAt! >= 1.5 else { return }
+                    if self.scenario == "ready-conflict", owner.hasPendingInstallation,
+                       now - self.blockedAt! < 8 { return }
                     timer.invalidate()
                     self.checkTimer = nil
                     self.finish([

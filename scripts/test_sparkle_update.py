@@ -127,9 +127,9 @@ def main():
         run("codesign", "--verify", "--deep", "--strict", str(app))
         return app
 
-    installed = make_app(root / "installed", "1", "1.2.1", args.scenario)
-    update = make_app(root / "new", "0006", "1.3.0", args.scenario)
-    archive = feed_root / "Aquarius-v1.3.0-macOS.zip"
+    installed = make_app(root / "installed", "0006", "1.3.0", args.scenario)
+    update = make_app(root / "new", "0007", "1.3.1", args.scenario)
+    archive = feed_root / "Aquarius-v1.3.1-macOS.zip"
     run("ditto", "-c", "-k", "--sequesterRsrc", "--keepParent", str(update), str(archive), timeout=180)
     run(
         str(tools / "generate_appcast"), "--ed-key-file", str(key_path),
@@ -140,7 +140,7 @@ def main():
     feed_build = ET.parse(feed).findtext(
         "./channel/item/{http://www.andymatuschak.org/xml-namespaces/sparkle}version"
     )
-    if feed_build != "0006":
+    if feed_build != "0007":
         raise RuntimeError(f"Appcast lost the padded Sparkle build: {feed_build!r}")
 
     if args.scenario == "feed-signature":
@@ -179,24 +179,24 @@ def main():
         with installed_info_path.open("rb") as stream:
             installed_build = plistlib.load(stream)["CFBundleVersion"]
         if args.scenario == "update":
-            if result.get("result") != "updated" or installed_build != "0006":
+            if result.get("result") != "updated" or installed_build != "0007":
                 raise AssertionError(f"Signed update did not install: {result}, build={installed_build}")
             if not result.get("preferencesRetained") or not result.get("historyRetained"):
                 raise AssertionError(f"Fixture state did not survive replacement: {result}")
             if not any(path.endswith(".zip") for path in requests):
                 raise AssertionError(f"The update archive was not requested: {requests}")
         elif args.scenario in ("cancel-install", "quit-before-ready"):
-            if result.get("result") != "cancelled" or installed_build != "1":
+            if result.get("result") != "cancelled" or installed_build != "0006":
                 raise AssertionError(f"Cancelled/quit update replaced the old app: {result}, build={installed_build}")
             if result.get("preparedInstallation") or result.get("installationReserved"):
                 raise AssertionError(f"Cancelled update remained armed: {result}")
         elif args.scenario in ("download-conflict", "ready-conflict"):
-            if result.get("result") != "blocked" or installed_build != "1":
+            if result.get("result") != "blocked" or installed_build != "0006":
                 raise AssertionError(f"Media-work conflict did not block the update: {result}, build={installed_build}")
             if result.get("preparedInstallation") or result.get("installationReserved"):
                 raise AssertionError(f"Conflicting update remained armed: {result}")
         else:
-            if result.get("result") not in ("failed", "error") or installed_build != "1":
+            if result.get("result") not in ("failed", "error") or installed_build != "0006":
                 raise AssertionError(f"Invalid or missing feed did not fail closed: {result}, build={installed_build}")
             if not any("appcast.xml" in path for path in requests):
                 raise AssertionError(f"Fixture did not request the feed: {requests}")
